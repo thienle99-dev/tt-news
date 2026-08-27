@@ -93,7 +93,7 @@ func migrate(db *sql.DB) error {
 	}
 
 	sources := []rss.Source{
-		// {Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		// {Name: "Al Jazeera English", URL: "https://www.aljazeera.com/xml/rss/all.xml", Category: "world", CountryCode: "QA", CountryName: "Qatar"},
 		// {Name: "The Guardian World", URL: "https://www.theguardian.com/world/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "The Guardian Politics", URL: "https://www.theguardian.com/politics/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
@@ -120,6 +120,17 @@ func migrate(db *sql.DB) error {
 		// {Name: "BBC World", URL: "https://feeds.bbci.co.uk/news/world/rss.xml", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		{Name: "BBC News Tiếng Việt", URL: "https://feeds.bbci.co.uk/vietnamese/rss.xml", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
 		{Name: "The Verge", URL: "https://www.theverge.com/rss/index.xml", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "TechCrunch", URL: "https://techcrunch.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Engadget", URL: "https://www.engadget.com/rss.xml", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "404 Media", URL: "https://www.404media.co/rss/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "9to5Mac", URL: "https://9to5mac.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Macworld", URL: "https://www.macworld.com/feed", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Android Authority", URL: "https://www.androidauthority.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "TechNode", URL: "https://technode.com/feed/", Category: "technology", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "Gizmochina", URL: "https://www.gizmochina.com/feed/", Category: "technology", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "Wccftech", URL: "https://wccftech.com/feed/", Category: "technology", CountryCode: "CA", CountryName: "Canada"},
+		{Name: "BGR", URL: "https://bgr.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "9to5Google", URL: "https://9to5google.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		// {Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "BBC News", URL: "https://feeds.bbci.co.uk/news/rss.xml", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "BBC UK", URL: "https://feeds.bbci.co.uk/news/uk/rss.xml", Category: "society", CountryCode: "GB", CountryName: "Vương quốc Anh"},
