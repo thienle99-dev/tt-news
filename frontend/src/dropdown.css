@@ -1,0 +1,31 @@
+.dropdown-chevron {
+  display: block;
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform .15s ease;
+}
+
+.dropdown.open .dropdown-chevron {
+  margin: 0;
+  transform: rotate(225deg);
+}
+
+.detail-paragraph {
+  margin: 0 0 14px;
+}
+
+.detail-rule {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.detail-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
