@@ -25,24 +25,24 @@ func (s *server) replaceArticleCategories(ctx context.Context, articleID int64, 
 }
 
 func (s *server) attachArticleCategories(ctx context.Context, item *article) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.slug FROM article_categories ac JOIN categories c ON c.id=ac.category_id WHERE ac.article_id=? ORDER BY ac.category_id`, item.ID)
+	rows, err := s.db.QueryContext(ctx, `SELECT c.slug,c.name FROM article_categories ac JOIN categories c ON c.id=ac.category_id WHERE ac.article_id=? ORDER BY ac.category_id`, item.ID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	item.Categories = nil
 	for rows.Next() {
-		var slug string
-		if err = rows.Scan(&slug); err != nil {
+		var category articleCategory
+		if err = rows.Scan(&category.Slug, &category.Name); err != nil {
 			return err
 		}
-		item.Categories = append(item.Categories, slug)
+		item.Categories = append(item.Categories, category)
 	}
 	if err = rows.Err(); err != nil {
 		return err
 	}
 	if len(item.Categories) == 0 && item.Category != "" {
-		item.Categories = []string{item.Category}
+		item.Categories = []articleCategory{{Slug: item.Category, Name: item.Category}}
 	}
 	return nil
 }

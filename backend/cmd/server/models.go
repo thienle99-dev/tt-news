@@ -32,12 +32,17 @@ type article struct {
 	CountryCode   string   `json:"country_code"`
 	CountryName   string   `json:"country_name"`
 	Category      string   `json:"category"`
-	Categories    []string `json:"categories"`
+	Categories    []articleCategory `json:"categories"`
 	PublishedAt   string   `json:"published_at"`
 	IsSaved       bool     `json:"is_saved"`
 	IsRead        bool     `json:"is_read"`
 	FolderIDs     []int64  `json:"folder_ids,omitempty"`
 	TagIDs        []int64  `json:"tag_ids,omitempty"`
+}
+
+type articleCategory struct {
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 type savedCollection struct {

@@ -1,6 +1,7 @@
+export type ArticleCategory = { slug: string; name: string }
 export type Article = {
   id: number; title: string; description: string; original_content?: string; summary: string; url: string; image_url: string; content_images: string[]
-  source: string; source_id: number; country_code: string; country_name: string; category: string; categories: string[]; published_at: string; is_saved: boolean; is_read: boolean; folder_ids: number[]; tag_ids: number[]
+  source: string; source_id: number; country_code: string; country_name: string; category: string; categories: ArticleCategory[]; published_at: string; is_saved: boolean; is_read: boolean; folder_ids: number[]; tag_ids: number[]
 }
 export type Category = { slug: string; name: string }
 export type Source = { id: number; name: string; country_code: string; country_name: string }

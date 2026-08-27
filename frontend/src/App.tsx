@@ -739,8 +739,8 @@ function GoldRates({ locale }: { locale: Locale }) {
   );
 }
 function ArticleCategories({ article, locale }: { article: Article; locale: Locale }) {
-  const labels = article.categories?.length ? article.categories : [article.category];
-  return <span className="category-labels" aria-label={locale === "vi" ? "Thể loại" : "Categories"}>{labels.map(slug => <span className={`category-label category-${slug}`} key={slug}>{category(slug, locale)}</span>)}</span>;
+  const labels = article.categories?.length ? article.categories : [{ slug: article.category, name: article.category }];
+  return <span className="category-labels" aria-label={locale === "vi" ? "Thể loại" : "Categories"}>{labels.map(item => <span className={`category-label category-${item.slug}`} key={item.slug}>{categories[item.slug]?.[locale] ?? item.name}</span>)}</span>;
 }
 function Card({
   article,
