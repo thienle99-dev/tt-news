@@ -144,9 +144,11 @@ AI_URL=https://api.openai.com/v1/chat/completions
 AI_KEY=your-server-side-api-key
 AI_MODEL=gpt-4o-mini
 AI_BACKGROUND_SCANNING=false
+AI_TRANSLATE_ENABLED=false
+AI_TRANSLATE_LANGUAGE=Vietnamese
 ```
 
-`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu, dịch các job đã xếp hàng và tạo bản tin nổi bật theo lịch. Các thao tác AI thủ công vẫn hoạt động khi biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu và tạo bản tin nổi bật theo lịch. `AI_TRANSLATE_ENABLED` điều khiển worker dịch tuần tự cho các bài RSS mới, cũng mặc định là `false`; hiện worker hỗ trợ `AI_TRANSLATE_LANGUAGE=Vietnamese`. Các thao tác AI thủ công vẫn hoạt động khi các biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
 
 ## Tạo bản tin nổi bật thủ công
 

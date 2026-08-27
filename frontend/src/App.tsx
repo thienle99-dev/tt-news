@@ -575,13 +575,7 @@ function Detail({
       const brief = await api.resummarize(article.id);
       setManualBrief(brief);
       setTranslation(null);
-      if (locale === "vi") {
-        try {
-          setTranslation(await api.translateVietnamese(article.id));
-        } catch {
-          setFailed(true);
-        }
-      }
+      setFailed(false);
     } catch {
       setResummarizeFailed(true);
     } finally {

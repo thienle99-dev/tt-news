@@ -5,12 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	translationservice "telegram-news/internal/translation"
 )
 
 func (s *server) runTranslationWorker(ctx context.Context) {
+	if !strings.EqualFold(s.cfg.AITranslateLanguage, "Vietnamese") && !strings.EqualFold(s.cfg.AITranslateLanguage, "vi") {
+		log.Printf("RSS translation worker disabled: AI_TRANSLATE_LANGUAGE=%q is not supported; only Vietnamese is currently supported", s.cfg.AITranslateLanguage)
+		return
+	}
 	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
 		log.Print("RSS translation worker disabled: set AI_URL and AI_KEY to enable it")
 		return
