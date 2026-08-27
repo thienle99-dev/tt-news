@@ -13,25 +13,25 @@ func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, erro
 	return f(request)
 }
 
-func TestFetchGoldRatesFiltersUnavailablePrices(t *testing.T) {
+func TestFetchGoldRatesMapsUsablePrices(t *testing.T) {
 	client := &http.Client{Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		if request.Method != http.MethodPost {
-			t.Fatalf("method = %s, want POST", request.Method)
+		if request.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", request.Method)
 		}
-		if request.Header.Get("Origin") != "https://baotinmanhhai.vn" {
-			t.Fatalf("origin = %q", request.Header.Get("Origin"))
+		if request.Header.Get("Accept") != "application/json" {
+			t.Fatalf("accept = %q", request.Header.Get("Accept"))
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Body: io.NopCloser(strings.NewReader(`{"data":{"goldRates":{"items":[{"code":"KGBG","name":"Kim Gia Bảo Gift 24K","buy_price":15300000,"sell_price":15700000,"unit":"VND/1 chỉ","trend":"down","trend_value":"-120.000","last_updated":"2026-08-27 14:40:05.0"},{"code":"BT24K","name":"Unavailable sale price","buy_price":14700000,"sell_price":1}]}}}`)),
-			Header: make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"success":true,"date":"2026-08-27","time":"23:00","prices":{"SJL1L10":{"name":"SJC 9999","buy":147000000,"sell":150000000,"change_sell":-400000},"SJ9999":{"name":"SJC Ring","buy":146500000,"sell":149500000,"change_sell":0},"DOHNL":{"name":"DOJI Hanoi","buy":147000000,"sell":150000000,"change_sell":400000},"BT9999NTT":{"name":"Bao Tin 9999","buy":148000000,"sell":152000000,"change_sell":-400000}}}`)),
+			Header:     make(http.Header),
 		}, nil
 	})}
-	rates, err := fetchGoldRatesWithClient(t.Context(), "https://example.test/graphql", client)
+	rates, err := fetchGoldRatesWithClient(t.Context(), "https://example.test/prices", client)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rates) != 1 || rates[0].Code != "KGBG" {
-		t.Fatalf("rates = %#v, want one usable rate", rates)
+	if len(rates) != 4 || rates[0].Code != "SJL1L10" || rates[0].Trend != "down" || rates[2].Trend != "up" {
+		t.Fatalf("rates = %#v, want four mapped rates", rates)
 	}
 }

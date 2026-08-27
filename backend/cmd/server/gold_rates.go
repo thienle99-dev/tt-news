@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +10,7 @@ import (
 	"time"
 )
 
-const goldRatesPageURL = "https://baotinmanhhai.vn/bang-gia-vang"
+const goldRatesURL = "https://www.vang.today/api/prices"
 
 type goldRate struct {
 	Code        string  `json:"code"`
@@ -24,12 +23,18 @@ type goldRate struct {
 	LastUpdated string  `json:"last_updated"`
 }
 
-type goldRatesQueryResponse struct {
-	Data struct {
-		GoldRates struct {
-			Items []goldRate `json:"items"`
-		} `json:"goldRates"`
-	} `json:"data"`
+type vangTodayResponse struct {
+	Success bool                      `json:"success"`
+	Date    string                    `json:"date"`
+	Time    string                    `json:"time"`
+	Prices  map[string]vangTodayPrice `json:"prices"`
+}
+
+type vangTodayPrice struct {
+	Name       string  `json:"name"`
+	Buy        float64 `json:"buy"`
+	Sell       float64 `json:"sell"`
+	ChangeSell float64 `json:"change_sell"`
 }
 
 func (s *server) goldRatesHandler(w http.ResponseWriter, r *http.Request) {
@@ -60,32 +65,11 @@ func fetchGoldRates(ctx context.Context, endpoint string) ([]goldRate, error) {
 }
 
 func fetchGoldRatesWithClient(ctx context.Context, endpoint string, client *http.Client) ([]goldRate, error) {
-	payload := map[string]any{
-		"operationName": "GetGoldRates",
-		"query": `query GetGoldRates($limit: Int, $rate_codes: [String!]) {
-  goldRates(limit: $limit, rate_codes: $rate_codes) {
-    items {
-      code name buy_price sell_price unit trend trend_value last_updated
-    }
-  }
-}`,
-		"variables": map[string]any{
-			"limit":      4,
-			"rate_codes": []string{"KGBG", "KGB", "9999", "999"},
-		},
-	}
-	body, err := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/graphql-response+json, application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", "https://baotinmanhhai.vn")
-	req.Header.Set("Referer", goldRatesPageURL)
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "TelegramNewsRSSBot/1.0")
 
 	res, err := client.Do(req)
@@ -100,17 +84,30 @@ func fetchGoldRatesWithClient(ctx context.Context, endpoint string, client *http
 	if err != nil {
 		return nil, err
 	}
-	var response goldRatesQueryResponse
+	var response vangTodayResponse
 	if err = json.Unmarshal(data, &response); err != nil {
 		return nil, err
 	}
-	rates := make([]goldRate, 0, len(response.Data.GoldRates.Items))
-	for _, rate := range response.Data.GoldRates.Items {
-		rate.Name, rate.Unit = strings.TrimSpace(rate.Name), strings.TrimSpace(rate.Unit)
-		if rate.Name == "" || rate.BuyPrice <= 0 || rate.SellPrice <= rate.BuyPrice {
+	if !response.Success {
+		return nil, fmt.Errorf("gold rates endpoint reported failure")
+	}
+	updated := strings.TrimSpace(response.Date + " " + response.Time)
+	rates := make([]goldRate, 0, 4)
+	for _, code := range []string{"SJL1L10", "SJ9999", "DOHNL", "BT9999NTT"} {
+		price, ok := response.Prices[code]
+		if !ok || strings.TrimSpace(price.Name) == "" || price.Buy <= 0 || price.Sell <= price.Buy {
 			continue
 		}
-		rates = append(rates, rate)
+		trend := "neutral"
+		if price.ChangeSell > 0 {
+			trend = "up"
+		} else if price.ChangeSell < 0 {
+			trend = "down"
+		}
+		rates = append(rates, goldRate{
+			Code: code, Name: strings.TrimSpace(price.Name), BuyPrice: price.Buy, SellPrice: price.Sell,
+			Unit: "VND/lượng", Trend: trend, TrendValue: fmt.Sprintf("%+.0f", price.ChangeSell), LastUpdated: updated,
+		})
 	}
 	if len(rates) == 0 {
 		return nil, fmt.Errorf("gold rates endpoint returned no usable rates")

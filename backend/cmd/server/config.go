@@ -30,7 +30,7 @@ func loadConfig() config {
 		DBPath:                 env("DATABASE_PATH", "/data/news.db"),
 		BotToken:               os.Getenv("TELEGRAM_BOT_TOKEN"),
 		MiniAppURL:             os.Getenv("MINI_APP_URL"),
-		GoldRatesURL:           env("GOLD_RATES_URL", "https://baotinmanhhai.vn/api/graphql"),
+		GoldRatesURL:           env("GOLD_RATES_URL", goldRatesURL),
 		AIURL:                  os.Getenv("AI_URL"),
 		AIKey:                  os.Getenv("AI_KEY"),
 		AIModel:                env("AI_MODEL", "gpt-4o-mini"),

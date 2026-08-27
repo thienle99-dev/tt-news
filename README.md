@@ -152,7 +152,7 @@ AI_TRANSLATE_LANGUAGE=Vietnamese
 
 ## Giá vàng tham khảo
 
-Trang chủ hiển thị giá mua/bán tham khảo từ Bảo Tín Mạnh Hải, tải qua backend tại `/api/gold-rates` và cache trong 1 phút. Có thể đổi endpoint GraphQL qua `GOLD_RATES_URL`; ứng dụng giữ nguyên kiểm tra chứng chỉ TLS của nguồn.
+Trang chủ hiển thị giá mua/bán tham khảo từ Vàng Today, tải qua backend tại `/api/gold-rates` và cache trong 1 phút. Có thể đổi endpoint JSON qua `GOLD_RATES_URL`; ứng dụng giữ nguyên kiểm tra chứng chỉ TLS của nguồn.
 
 ## Tạo bản tin nổi bật thủ công
 

@@ -6,11 +6,11 @@ type Filters = { category: string; source: string; country: string; query: strin
 type IconName = 'search' | 'pin' | 'building' | 'tag' | 'chevron'
 
 const categoryLabel = (slug: string, locale: Locale) => {
-  const labels: Record<string, [string, string]> = { technology: ['Technology', 'Công nghệ'], programming: ['Programming', 'Lập trình'], world: ['World', 'Thế giới'], society: ['Society', 'Xã hội'], culture: ['Culture', 'Văn hóa'], sports: ['Sports', 'Thể thao'], education: ['Education', 'Giáo dục'], health: ['Health', 'Sức khỏe'], science: ['Science', 'Khoa học'] }
+  const labels: Record<string, [string, string]> = { technology: ['Technology', 'Công nghệ'], programming: ['Programming', 'Lập trình'], world: ['World', 'Thế giới'], society: ['Society', 'Xã hội'], culture: ['Culture', 'Văn hóa'], sports: ['Sports', 'Thể thao'], education: ['Education', 'Giáo dục'], health: ['Health', 'Sức khỏe'], science: ['Science', 'Khoa học'], security: ['Security', 'Bảo mật'], ai: ['AI', 'Trí tuệ nhân tạo'], llm: ['LLM', 'Mô hình ngôn ngữ lớn'], cybersecurity: ['Cybersecurity', 'An ninh mạng'] }
   return labels[slug]?.[locale === 'vi' ? 1 : 0] ?? slug
 }
 
-const categoryMark = (slug: string) => ({ technology: '◆', programming: '⌘', world: '◉', society: '●', culture: '◇', sports: '▸', education: '▤', health: '✚', science: '✦' }[slug] ?? '•')
+const categoryMark = (slug: string) => ({ technology: '◆', programming: '⌘', world: '◉', society: '●', culture: '◇', sports: '▸', education: '▤', health: '✚', science: '✦', security: '◈', ai: '◎', llm: '▣', cybersecurity: '◉' }[slug] ?? '•')
 
 const countryFlag = (code: string) => {
   if (code === 'GLOBAL') return '◉'

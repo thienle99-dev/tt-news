@@ -387,7 +387,7 @@ func decodeContentImages(raw string) []string {
 	return images
 }
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.QueryContext(r.Context(), `SELECT c.slug,c.name FROM categories c WHERE c.slug<>'business' AND EXISTS(SELECT 1 FROM sources s WHERE s.category_id=c.id AND s.enabled=1) ORDER BY c.name`)
+	rows, e := s.db.QueryContext(r.Context(), `SELECT c.slug,c.name FROM categories c WHERE c.slug<>'business' AND (c.slug IN ('security','ai','llm','cybersecurity') OR EXISTS(SELECT 1 FROM sources s WHERE s.category_id=c.id AND s.enabled=1)) ORDER BY c.name`)
 	if e != nil {
 		jsonErr(w, 500, "could not load categories")
 		return
@@ -668,6 +668,25 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		return result, e
 	}
 	result.FeedItems = len(feed.Items)
+	categoryIDs := map[string]int64{src.Category: src.CategoryID}
+	rows, e := s.db.QueryContext(ctx, `SELECT id,slug FROM categories WHERE slug IN ('security','ai','llm','cybersecurity')`)
+	if e != nil {
+		return result, e
+	}
+	for rows.Next() {
+		var id int64
+		var slug string
+		if e = rows.Scan(&id, &slug); e != nil {
+			rows.Close()
+			return result, e
+		}
+		categoryIDs[slug] = id
+	}
+	if e = rows.Err(); e != nil {
+		rows.Close()
+		return result, e
+	}
+	rows.Close()
 	for index, item := range feed.Items {
 		link := normalizeURL(item.Link)
 		title := strings.TrimSpace(item.Title)
@@ -678,6 +697,11 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		if isObviousJunk(title) {
 			result.Invalid++
 			continue
+		}
+		categorySlug := rssItemCategory(item.Categories, src.Category)
+		categoryID := categoryIDs[categorySlug]
+		if categoryID == 0 {
+			return result, fmt.Errorf("rss category %q is not configured", categorySlug)
 		}
 		var existingArticleID int64
 		var existingImage, existingDescription string
@@ -746,7 +770,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, marshalErr
 		}
 		if existingArticleID != 0 {
-			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, existingArticleID); e != nil {
+			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET category_id=?,image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END WHERE id=?`, categoryID, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, existingArticleID); e != nil {
 				return result, e
 			}
 			result.Existing++
@@ -764,7 +788,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 				return result, e
 			}
 		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, fullContent, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, categoryID, title, description, fullContent, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
 			return result, e
 		}

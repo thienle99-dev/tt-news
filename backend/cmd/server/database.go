@@ -88,6 +88,9 @@ func migrate(db *sql.DB) error {
 		{"health", "Sức khỏe"},
 		{"science", "Khoa học"},
 	}
+	for _, category := range rssItemCategoryDefinitions {
+		categories = append(categories, struct{ slug, name string }{category.slug, category.name})
+	}
 	for _, category := range categories {
 		if _, err = db.Exec("INSERT INTO categories(slug,name) VALUES(?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name", category.slug, category.name); err != nil {
 			return err

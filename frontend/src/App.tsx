@@ -30,6 +30,10 @@ const categories: Record<string, Record<Locale, string>> = {
   education: { en: "Education", vi: "Giáo dục" },
   health: { en: "Health", vi: "Sức khỏe" },
   science: { en: "Science", vi: "Khoa học" },
+  security: { en: "Security", vi: "Bảo mật" },
+  ai: { en: "AI", vi: "Trí tuệ nhân tạo" },
+  llm: { en: "LLM", vi: "Mô hình ngôn ngữ lớn" },
+  cybersecurity: { en: "Cybersecurity", vi: "An ninh mạng" },
 };
 const countries: Record<string, Record<Locale, string>> = {
   GLOBAL: { en: "Global", vi: "Toàn cầu" },
@@ -535,10 +539,10 @@ function GoldRates({ locale }: { locale: Locale }) {
         </div>
         <a
           className="gold-source-link"
-          href="https://baotinmanhhai.vn/bang-gia-vang"
+          href="https://www.vang.today/"
           onClick={(event) => {
             event.preventDefault();
-            open("https://baotinmanhhai.vn/bang-gia-vang");
+            open("https://www.vang.today/");
           }}
         >
           {t.goldViewSource}
@@ -635,7 +639,7 @@ function Card({
           </div>
           <h2>{article.title}</h2>
           {article.summary && <p>{textOnly(article.summary)}</p>}
-          <span className="category-label">
+          <span className={`category-label category-${article.category}`}>
             {category(article.category, locale)}
           </span>
         </div>
@@ -735,7 +739,7 @@ function Detail({
       <p className="eyebrow">
         {article.source} · {publishedOn(article.published_at, locale)}
       </p>
-      <span className="category-label">
+      <span className={`category-label category-${article.category}`}>
         {category(article.category, locale)}
       </span>
       <h1>{title}</h1>
