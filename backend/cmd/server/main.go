@@ -1219,6 +1219,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			continue
 		}
 		categorySlug := rssItemCategory(item.Categories, src.Category)
+		categoryDefinitions := rssItemCategories(item.Categories, src.Category)
 		categoryID := categoryIDs[categorySlug]
 		if categoryID == 0 {
 			return result, fmt.Errorf("rss category %q is not configured", categorySlug)
@@ -1228,6 +1229,9 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		e = s.db.QueryRowContext(ctx, "SELECT id,image_url,description FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage, &existingDescription)
 		if e == nil {
 			if existingImage != "" && existingDescription != "" {
+				if e = s.replaceArticleCategories(ctx, existingArticleID, categoryDefinitions); e != nil {
+					return result, e
+				}
 				result.Existing++
 				continue
 			}
@@ -1293,6 +1297,9 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET category_id=?,image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END WHERE id=?`, categoryID, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, existingArticleID); e != nil {
 				return result, e
 			}
+			if e = s.replaceArticleCategories(ctx, existingArticleID, categoryDefinitions); e != nil {
+				return result, e
+			}
 			result.Existing++
 			continue
 		}
@@ -1314,12 +1321,14 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		}
 		if count, _ := dbResult.RowsAffected(); count > 0 {
 			result.Inserted += int(count)
+			articleID, idErr := dbResult.LastInsertId()
+			if idErr != nil {
+				return result, idErr
+			}
+			if e = s.replaceArticleCategories(ctx, articleID, categoryDefinitions); e != nil {
+				return result, e
+			}
 			if s.cfg.AITranslateEnabled && s.cfg.RSSTranslateVietnamese {
-				articleID, idErr := dbResult.LastInsertId()
-				if idErr != nil {
-					log.Printf("rss translation queue id %s: %v", link, idErr)
-					continue
-				}
 				if _, queueErr := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code) VALUES(?,'vi')`, articleID); queueErr != nil {
 					log.Printf("rss translation queue %s: %v", link, queueErr)
 				} else {

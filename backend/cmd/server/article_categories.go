@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 )
 
 func (s *server) replaceArticleCategories(ctx context.Context, articleID int64, definitions []categoryDefinition) error {
@@ -56,5 +55,3 @@ func (s *server) attachArticleCategoriesList(ctx context.Context, items []articl
 	}
 	return nil
 }
-
-var _ = sql.ErrNoRows
