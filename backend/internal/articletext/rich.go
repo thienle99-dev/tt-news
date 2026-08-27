@@ -2,11 +2,13 @@ package articletext
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -37,6 +39,9 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 		return Content{}, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusForbidden && is9to5Google(req.URL) {
+		return c.fetch9to5GooglePost(ctx, req.URL)
+	}
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return Content{}, fmt.Errorf("article page returned %s", res.Status)
 	}
@@ -68,6 +73,71 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 		images = metadataImages(doc, base)
 	}
 	return Content{Text: selectionText(root), Images: images}, nil
+}
+
+func is9to5Google(pageURL *url.URL) bool {
+	host := strings.ToLower(pageURL.Hostname())
+	return host == "9to5google.com" || host == "www.9to5google.com"
+}
+
+func (c Client) fetch9to5GooglePost(ctx context.Context, pageURL *url.URL) (Content, error) {
+	slug := path.Base(strings.Trim(pageURL.Path, "/"))
+	if slug == "" || slug == "." || slug == "/" {
+		return Content{}, errors.New("9to5google article slug is missing")
+	}
+	apiURL := &url.URL{Scheme: pageURL.Scheme, Host: pageURL.Host, Path: "/wp-json/wp/v2/posts"}
+	query := apiURL.Query()
+	query.Set("slug", slug)
+	query.Set("_fields", "content")
+	apiURL.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL.String(), nil)
+	if err != nil {
+		return Content{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return Content{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return Content{}, fmt.Errorf("9to5google API returned %s", res.Status)
+	}
+	maxBytes := c.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxBytes
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxBytes+1))
+	if err != nil {
+		return Content{}, err
+	}
+	if int64(len(body)) > maxBytes {
+		return Content{}, fmt.Errorf("9to5google API response exceeds %d byte limit", maxBytes)
+	}
+	var posts []struct {
+		Content struct {
+			Rendered string `json:"rendered"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(body, &posts); err != nil {
+		return Content{}, fmt.Errorf("decode 9to5google API response: %w", err)
+	}
+	if len(posts) == 0 || strings.TrimSpace(posts[0].Content.Rendered) == "" {
+		return Content{}, errors.New("9to5google API article was not found")
+	}
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(posts[0].Content.Rendered))
+	if err != nil {
+		return Content{}, err
+	}
+	root := richRoot(doc)
+	return Content{Text: selectionText(root), Images: contentImages(root, pageURL)}, nil
 }
 
 func richRoot(doc *goquery.Document) *goquery.Selection {

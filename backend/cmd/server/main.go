@@ -30,7 +30,6 @@ import (
 	"github.com/mmcdole/gofeed"
 	_ "modernc.org/sqlite"
 	"telegram-news/internal/articletext"
-	translationservice "telegram-news/internal/translation"
 )
 
 //go:embed migrations/*.sql static/*
@@ -556,8 +555,8 @@ func (s *server) runRSS(ctx context.Context) {
 }
 
 type rssFetchResult struct {
-	FeedItems, Inserted, Existing, BeforeSince, Invalid, Summarized, SummaryFailed, TranslationQueued int
-	Duration                                                                                          time.Duration
+	FeedItems, Inserted, Existing, BeforeSince, Invalid int
+	Duration                                           time.Duration
 }
 
 func (result *rssFetchResult) add(other rssFetchResult) {
@@ -566,9 +565,6 @@ func (result *rssFetchResult) add(other rssFetchResult) {
 	result.Existing += other.Existing
 	result.BeforeSince += other.BeforeSince
 	result.Invalid += other.Invalid
-	result.Summarized += other.Summarized
-	result.SummaryFailed += other.SummaryFailed
-	result.TranslationQueued += other.TranslationQueued
 	result.Duration += other.Duration
 }
 
@@ -643,9 +639,9 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string, since time
 			continue
 		}
 		total.add(completed.result)
-		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.result.FeedItems, completed.result.Inserted, completed.result.Existing, completed.result.BeforeSince, completed.result.Invalid, completed.result.Summarized, completed.result.SummaryFailed, completed.result.TranslationQueued)
+		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.result.FeedItems, completed.result.Inserted, completed.result.Existing, completed.result.BeforeSince, completed.result.Invalid)
 	}
-	log.Printf("rss crawl finished in %s: sources=%d feed-items=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", time.Since(crawlStarted).Round(time.Millisecond), processed, total.FeedItems, total.Inserted, total.Existing, total.BeforeSince, total.Invalid, total.Summarized, total.SummaryFailed, total.TranslationQueued)
+	log.Printf("rss crawl finished in %s: sources=%d feed-items=%d new=%d existing=%d before-date=%d invalid=%d", time.Since(crawlStarted).Round(time.Millisecond), processed, total.FeedItems, total.Inserted, total.Existing, total.BeforeSince, total.Invalid)
 }
 func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (result rssFetchResult, err error) {
 	started := time.Now()
@@ -718,8 +714,9 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		} else {
 			if len(extracted.Text) >= 300 {
 				body = extracted.Text
+				description = extracted.Text
 			} else if extracted.Text != "" {
-				log.Printf("rss article %s: extracted text too short for summary; using RSS description", link)
+				log.Printf("rss article %s: extracted text too short; using RSS description", link)
 			}
 			contentImages = extracted.Images
 			if image == "" && len(contentImages) > 0 {
@@ -749,32 +746,12 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 				return result, e
 			}
 		}
-		summary := ""
-		if brief, summaryErr := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(ctx, title, body); summaryErr != nil {
-			result.SummaryFailed++
-			log.Printf("rss summary %s: %v", link, summaryErr)
-		} else {
-			title, summary = brief.Title, brief.Summary
-			result.Summarized++
-		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
 			return result, e
 		}
 		if count, _ := dbResult.RowsAffected(); count > 0 {
 			result.Inserted += int(count)
-			if s.cfg.RSSTranslateVietnamese && summary != "" {
-				articleID, idErr := dbResult.LastInsertId()
-				if idErr != nil {
-					log.Printf("rss translation queue id %s: %v", link, idErr)
-					continue
-				}
-				if _, queueErr := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code) VALUES(?,'vi')`, articleID); queueErr != nil {
-					log.Printf("rss translation queue %s: %v", link, queueErr)
-				} else {
-					result.TranslationQueued++
-				}
-			}
 		}
 	}
 	return result, nil

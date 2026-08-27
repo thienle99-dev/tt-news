@@ -70,3 +70,26 @@ func TestFetchContentUsesOpenGraphImageWhenArticleHasNoImage(t *testing.T) {
 		t.Fatalf("images = %q, want %q", got, want)
 	}
 }
+
+func TestFetchContentFallsBackTo9to5GoogleAPIOnForbiddenPage(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/2026/08/25/example-post/" {
+			return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader("forbidden"))}, nil
+		}
+		if req.URL.Path != "/wp-json/wp/v2/posts" || req.URL.Query().Get("slug") != "example-post" {
+			t.Fatalf("unexpected fallback URL: %s", req.URL)
+		}
+		body := `[{"content":{"rendered":"<article><p>Full article from the public API.</p><img src=\"/cover.jpg\"></article>"}}]`
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	content, err := (Client{HTTPClient: client}).FetchContent(context.Background(), "https://9to5google.com/2026/08/25/example-post/")
+	if err != nil {
+		t.Fatalf("FetchContent() error = %v", err)
+	}
+	if got, want := content.Text, "Full article from the public API."; got != want {
+		t.Fatalf("text = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(content.Images, ","), "https://9to5google.com/cover.jpg"; got != want {
+		t.Fatalf("images = %q, want %q", got, want)
+	}
+}
