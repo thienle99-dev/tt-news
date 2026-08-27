@@ -39,7 +39,7 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 	now := time.Now().UTC()
 	slot := now.Truncate(s.cfg.FeaturedBriefInterval)
 	var exists int
-	if err := s.db.QueryRowContext(ctx, "SELECT 1 FROM featured_briefs WHERE slot_start=?", slot.Format(time.RFC3339)).Scan(&exists); err == nil { return } else if !errors.Is(err, sql.ErrNoRows) { log.Printf("featured briefing lookup: %v", err); return }
+	if err := s.db.QueryRowContext(ctx, "SELECT 1 FROM featured_briefs WHERE slot_start=?", slot.Format(time.RFC3339)).Scan(&exists); err == nil { log.Print("featured briefing skipped: already generated for the current slot"); return } else if !errors.Is(err, sql.ErrNoRows) { log.Printf("featured briefing lookup: %v", err); return }
 	windowStart := now.Add(-s.cfg.FeaturedBriefWindow)
 	candidates, err := s.featuredCandidates(ctx, windowStart)
 	if err != nil { log.Printf("featured briefing candidates: %v", err); return }

@@ -53,6 +53,10 @@ func main() {
 		runTranslateAllVietnamese(cfg)
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "featured-generate" {
+		runFeaturedOnce(cfg)
+		return
+	}
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
@@ -135,6 +139,19 @@ func runRSSOnce(cfg config, filter string, since time.Time) {
 	}
 	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
 	app.fetchSources(context.Background(), filter, since)
+}
+
+func runFeaturedOnce(cfg config) {
+	db, err := openDB(cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err = migrate(db); err != nil {
+		log.Fatal(err)
+	}
+	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
+	app.generateFeaturedBrief(context.Background())
 }
 
 type server struct {
@@ -649,10 +666,10 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			continue
 		}
 		var existingArticleID int64
-		var existingImage string
-		e = s.db.QueryRowContext(ctx, "SELECT id,image_url FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage)
+		var existingImage, existingDescription string
+		e = s.db.QueryRowContext(ctx, "SELECT id,image_url,description FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage, &existingDescription)
 		if e == nil {
-			if existingImage != "" {
+			if existingImage != "" && existingDescription != "" {
 				result.Existing++
 				continue
 			}
@@ -690,10 +707,11 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			image = item.Enclosures[0].URL
 		}
 		contentImages := []string{}
-		body := articletext.PlainText(item.Description)
-		if body == "" {
-			body = articletext.PlainText(item.Content)
+		description := articletext.PlainText(item.Description)
+		if description == "" {
+			description = articletext.PlainText(item.Content)
 		}
+		body := description
 		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
 		} else {
@@ -710,10 +728,8 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, marshalErr
 		}
 		if existingArticleID != 0 {
-			if image != "" {
-				if _, e = s.db.ExecContext(ctx, "UPDATE articles SET image_url=?,content_images=? WHERE id=?", image, string(contentImagesJSON), existingArticleID); e != nil {
-					return result, e
-				}
+			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, existingArticleID); e != nil {
+				return result, e
 			}
 			result.Existing++
 			continue
@@ -738,7 +754,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			title, summary = brief.Title, brief.Summary
 			result.Summarized++
 		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
 			return result, e
 		}

@@ -1,5 +1,6 @@
 .dropdown-chevron { display:block; flex:0 0 8px; width:8px; height:8px; margin-top:-4px; border-right:1.5px solid var(--muted); border-bottom:1.5px solid var(--muted); transform:rotate(45deg); transition:transform .16s ease; }
 .dropdown.open .dropdown-chevron { margin-top:4px; transform:rotate(225deg); }
+.filter-icon { width:18px; height:18px; flex:0 0 18px; }
 .filter-controls { display:grid; grid-template-columns:1.45fr repeat(3,minmax(0,1fr)); gap:10px; margin:16px 0 4px; padding:12px; border:1px solid var(--line); border-radius:18px; background:var(--paper); }
 .filter-search,.filter-field,.source-select { position:relative; display:grid; gap:6px; min-width:0; }
 .filter-controls > * > span,.filter-field > span { color:var(--muted); font:700 10px Roboto,sans-serif; letter-spacing:.09em; text-transform:uppercase; }
@@ -20,6 +21,14 @@
 .source-options label:has(input:checked) { background:var(--accent-soft); }
 .source-options input { width:18px; height:18px; accent-color:var(--accent); }
 .source-options p { margin:8px; color:var(--muted); font:13px Roboto,sans-serif; }
+.category-chips { grid-column:1 / -1; display:grid; gap:8px; padding-top:2px; }
+.category-chips > span { display:flex; align-items:center; gap:6px; color:var(--muted); font:700 10px Roboto,sans-serif; letter-spacing:.09em; text-transform:uppercase; }
+.category-chips > span .filter-icon { width:15px; height:15px; flex-basis:15px; }
+.category-chips > div { display:flex; flex-wrap:wrap; gap:8px; }
+.category-chips button { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:7px 11px; border:1px solid var(--line); border-radius:999px; background:var(--paper); color:var(--muted); font:500 13px Roboto,sans-serif; }
+.category-chips button:hover { border-color:var(--accent); color:var(--accent); }
+.category-chips button.selected { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:700; }
+.category-chips b { font-size:11px; line-height:1; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .featured-lead { padding:28px 0 22px; border-bottom:2px solid var(--ink); }
 .featured-lead h2,.featured-topic h2 { margin:10px 0; font:600 clamp(1.8rem,6vw,2.6rem)/1.05 Newsreader,Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }
@@ -27,7 +36,10 @@
 .featured-topics { display:grid; gap:30px; margin-top:28px; }
 .featured-topic { padding-bottom:28px; border-bottom:1px solid var(--line); }
 .featured-articles { display:grid; gap:12px; margin-top:16px; }
-/* Original reporting remains at the linked publisher; the detail page presents the brief only. */
-.article-content,.article-image-gallery { display:none; }
+.show-more-button { display:inline-flex; align-items:center; gap:7px; min-height:44px; margin-top:14px; padding:9px 2px; border:0; background:transparent; color:var(--accent); font:700 13px Roboto,sans-serif; }
+.show-more-button:hover { text-decoration:underline; text-underline-offset:4px; }
+.show-more-button .icon { width:17px; height:17px; }
+/* The RSS description is shown as a source excerpt; full reporting remains at the publisher. */
+.article-image-gallery { display:none; }
 @media (max-width:760px) { .filter-controls { grid-template-columns:repeat(2,minmax(0,1fr)); } .filter-search { grid-column:1 / -1; } }
 @media (max-width:480px) { .filter-controls { grid-template-columns:1fr; } .filter-search { grid-column:auto; } }

@@ -146,3 +146,13 @@ AI_MODEL=gpt-4o-mini
 ```
 
 `AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. RSS tạo tóm tắt khi nhập bài; bản dịch title và tóm tắt được lưu trong SQLite theo bài/ngôn ngữ và dùng lại từ cache. Nếu AI chưa cấu hình hoặc trả lỗi, app giữ metadata RSS và link bài gốc. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+
+## Tạo bản tin nổi bật thủ công
+
+Khi `AI_URL` và `AI_KEY` đã được cấu hình, tạo ngay một bản tin nổi bật từ các bài đủ điều kiện trong cửa sổ `FEATURED_BRIEF_WINDOW`:
+
+```bash
+docker compose run --rm --no-deps news-app /app/news featured-generate
+```
+
+Lệnh sẽ ghi log nếu thiếu cấu hình AI, chưa đủ 5 bài đã tóm tắt, hoặc bản tin đã được tạo cho slot thời gian hiện tại.

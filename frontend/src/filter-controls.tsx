@@ -10,6 +10,14 @@ const categoryLabel = (slug: string, locale: Locale) => {
   return labels[slug]?.[locale === 'vi' ? 1 : 0] ?? slug
 }
 
+const categoryMark = (slug: string) => ({ technology: '◆', world: '◉', society: '●', culture: '◇', sports: '▸', education: '▤', health: '✚', science: '✦' }[slug] ?? '•')
+
+const countryFlag = (code: string) => {
+  if (code === 'GLOBAL') return '◉'
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(...[...code].map(character => 0x1F1E6 + character.charCodeAt(0) - 65))
+}
+
 function FilterIcon({ name }: { name: IconName }) {
   const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   const paths = { search: <><circle {...common} cx="10.8" cy="10.8" r="5.8" /><path {...common} d="m16 16 4 4" /></>, pin: <><path {...common} d="M19 10c0 5-7 10-7 10S5 15 5 10a7 7 0 1 1 14 0Z" /><circle {...common} cx="12" cy="10" r="2.2" /></>, building: <><path {...common} d="M4 21V5h12v16M16 9h4v12M8 9h4m-4 4h4m-4 4h4M2 21h20" /></>, tag: <path {...common} d="M20 13 13 20 4 11V4h7l9 9Z" />, chevron: <path {...common} d="m7 10 5 5 5-5" /> }
@@ -32,8 +40,8 @@ export function FilterControls({ locale, filter, setFilter, search, setSearch, c
   const toggleSource = (id: string) => setFilter({ ...filter, source: selected.includes(id) ? selected.filter(value => value !== id).join(',') : [...selected, id].join(',') })
   return <section className="filter-controls" aria-label={locale === 'vi' ? 'Bộ lọc tin' : 'News filters'}>
     <label className="filter-search" htmlFor="brief-search"><span>{copy.search}</span><div className="filter-input-wrap"><FilterIcon name="search" /><input id="brief-search" type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder={copy.search} autoComplete="off" /></div></label>
-    <label className="filter-field" htmlFor="country-filter"><span>{copy.country}</span><div className="filter-select-wrap"><FilterIcon name="pin" /><select id="country-filter" value={filter.country} onChange={event => changeCountry(event.target.value)}><option value="">{copy.allCountries}</option>{countries.map(item => <option value={item.code} key={item.code}>{item.name}</option>)}</select><FilterIcon name="chevron" /></div></label>
+    <label className="filter-field" htmlFor="country-filter"><span>{copy.country}</span><div className="filter-select-wrap"><FilterIcon name="pin" /><select id="country-filter" value={filter.country} onChange={event => changeCountry(event.target.value)}><option value="">{copy.allCountries}</option>{countries.map(item => <option value={item.code} key={item.code}>{countryFlag(item.code)} {item.name}</option>)}</select><FilterIcon name="chevron" /></div></label>
     <div className="source-select filter-field"><span id="source-filter-label">{copy.source}</span><button type="button" className="source-select-trigger" aria-labelledby="source-filter-label" aria-expanded={sourcesOpen} aria-controls="source-filter-menu" onClick={() => setSourcesOpen(value => !value)}><FilterIcon name="building" /><span>{selected.length ? `${selected.length} ${copy.selected}` : copy.allSources}</span><FilterIcon name="chevron" /></button>{sourcesOpen && <div className="source-select-menu" id="source-filter-menu" role="group" aria-labelledby="source-filter-label"><label className="source-search" htmlFor="source-search"><FilterIcon name="search" /><span className="sr-only">{copy.searchSources}</span><input id="source-search" type="search" value={sourceSearch} onChange={event => setSourceSearch(event.target.value)} placeholder={copy.searchSources} autoFocus /></label><div className="source-options">{visibleSources.map(source => <label key={source.id}><input type="checkbox" checked={selected.includes(String(source.id))} onChange={() => toggleSource(String(source.id))} />{source.name}</label>)}{!visibleSources.length && <p>{copy.noSources}</p>}</div></div>}</div>
-    <label className="filter-field" htmlFor="category-filter"><span>{copy.category}</span><div className="filter-select-wrap"><FilterIcon name="tag" /><select id="category-filter" value={filter.category} onChange={event => setFilter({ ...filter, category: event.target.value })}><option value="">{copy.allCategories}</option>{categories.map(item => <option value={item.slug} key={item.slug}>{categoryLabel(item.slug, locale)}</option>)}</select><FilterIcon name="chevron" /></div></label>
+    <div className="category-chips" role="group" aria-label={copy.category}><span><FilterIcon name="tag" />{copy.category}</span><div>{[{ slug: '', label: copy.allCategories }, ...categories.map(item => ({ slug: item.slug, label: categoryLabel(item.slug, locale) }))].map(item => <button type="button" className={filter.category === item.slug ? 'selected' : ''} aria-pressed={filter.category === item.slug} onClick={() => setFilter({ ...filter, category: item.slug })} key={item.slug || 'all'}>{item.slug && <b aria-hidden="true">{categoryMark(item.slug)}</b>}{item.label}</button>)}</div></div>
   </section>
 }
