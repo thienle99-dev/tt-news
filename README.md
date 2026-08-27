@@ -2,6 +2,16 @@
 
 MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go process phục vụ API, React frontend, RSS worker và Telegram bot polling; không cần Redis, PostgreSQL hay service phụ.
 
+## Cấu trúc backend
+
+`backend/cmd/server/` vẫn build thành một binary duy nhất, nhưng đã tách các concern nền tảng theo file:
+
+- `main.go`: khởi tạo server, shutdown và phần HTTP/RSS/Bot wiring.
+- `config.go`: đọc và parse toàn bộ biến môi trường.
+- `database.go`: SQLite connection, pragmas, migration và RSS seed.
+- `models.go`: DTO và model nội bộ dùng chung.
+- `migrations/` và `static/`: tài nguyên được embed vào binary; Docker copy React build vào `static/` trước khi compile.
+
 ## Chạy bằng Docker
 
 1. Tạo file cấu hình: `cp .env.example .env`.
@@ -85,6 +95,8 @@ AI chỉ được cấu hình qua `.env`, không có API/UI để đọc hoặc 
 AI_URL=https://api.openai.com/v1/chat/completions
 AI_KEY=your-server-side-api-key
 AI_MODEL=gpt-4o-mini
+AI_TRANSLATE_ENABLED=true
+AI_TRANSLATE_LANGUAGE=Vietnamese
 ```
 
-`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. Khi có đủ `AI_URL` và `AI_KEY`, RSS worker gửi nội dung của **bài mới** đến AI để tạo summary tiếng Việt tối đa hai câu và lưu vào cột `articles.summary`. Nếu AI không cấu hình hoặc request lỗi, app vẫn lưu bài với summary gốc từ RSS; không một lỗi AI nào làm worker dừng. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_TRANSLATE_ENABLED=true` mới cho phép RSS worker gọi AI; `false` (mặc định) hoàn toàn không gọi AI. `AI_TRANSLATE_LANGUAGE` nhận tên ngôn ngữ như `Vietnamese`, `English`, `Japanese` hoặc `French`. Khi được bật và có đủ `AI_URL`/`AI_KEY`, worker gửi nội dung của **bài mới** đến AI để tóm tắt và dịch sang ngôn ngữ đó, rồi lưu vào `articles.summary`. Nếu AI không cấu hình hoặc request lỗi, app vẫn lưu bài với summary gốc từ RSS; không một lỗi AI nào làm worker dừng. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.

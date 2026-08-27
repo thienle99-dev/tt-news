@@ -10,7 +10,7 @@ WORKDIR /src
 COPY backend/go.mod ./
 RUN go mod download
 COPY backend/ ./
-COPY --from=frontend-build /frontend/dist ./static
+COPY --from=frontend-build /frontend/dist ./cmd/server/static
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/news ./cmd/server
 
 FROM alpine:3.21
