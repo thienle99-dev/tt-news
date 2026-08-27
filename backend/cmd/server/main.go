@@ -190,11 +190,20 @@ func (s *server) routes() http.Handler {
 			r.Use(s.requireUser)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
 			r.Post("/articles/{id}/resummarize", s.resummarizeArticle)
+			r.Post("/articles/{id}/ai-feedback", s.submitAIFeedback)
 			r.Post("/articles/{id}/reading", s.startReading)
 			r.Post("/articles/{id}/read", s.markRead)
 			r.Get("/saved", s.saved)
+			r.Delete("/saved", s.bulkUnsave)
 			r.Post("/saved/{id}", s.save)
 			r.Delete("/saved/{id}", s.unsave)
+			r.Get("/saved/organization", s.savedOrganization)
+			r.Post("/saved/folders", s.createSavedFolder)
+			r.Delete("/saved/folders/{id}", s.deleteSavedFolder)
+			r.Post("/saved/tags", s.createSavedTag)
+			r.Delete("/saved/tags/{id}", s.deleteSavedTag)
+			r.Put("/saved/{id}/folders", s.setSavedArticleFolders)
+			r.Put("/saved/{id}/tags", s.setSavedArticleTags)
 			r.Get("/reading-history", s.readingHistory)
 			r.Delete("/reading-history", s.clearReadingHistory)
 			r.Get("/me", s.me)
@@ -386,9 +395,9 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		args = append(args, u.ID, u.ID)
 	}
 	args = append(args, id)
-	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND c.slug<>'business'`, saved, read)
+	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.full_content,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND c.slug<>'business'`, saved, read)
 	var isSaved, isRead int
-	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &isSaved, &isRead)
+	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.FullContent, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &isSaved, &isRead)
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -459,18 +468,61 @@ func (s *server) countries(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	language := r.URL.Query().Get("lang")
+	q := r.URL.Query()
+	language := q.Get("lang")
 	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
 	readJoin := "EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')"
 	args := []any{u.ID}
 	if language == "vi" {
 		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
-		args = []any{u.ID, language, u.ID}
-	} else {
-		args = append(args, u.ID)
+		args = append(args, language)
 	}
-	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1,%s FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 AND c.slug<>'business' ORDER BY sa.created_at DESC`, title, description, summary, readJoin, translationJoin)
+	where := []string{"sa.user_id=?", "s.enabled=1", "c.slug<>'business'"}
+	args = append(args, u.ID)
+	if category := q.Get("category"); category != "" {
+		where = append(where, "c.slug=?")
+		args = append(args, category)
+	}
+	if country := q.Get("country"); country != "" {
+		where = append(where, "s.country_code=?")
+		args = append(args, strings.ToUpper(country))
+	}
+	if sourceIDs := numericIDs(q.Get("source")); len(sourceIDs) > 0 {
+		where = append(where, "s.id IN ("+placeholders(len(sourceIDs))+")")
+		for _, id := range sourceIDs {
+			args = append(args, id)
+		}
+	}
+	if folderIDs := numericIDs(q.Get("folder")); len(folderIDs) > 0 {
+		where = append(where, "EXISTS(SELECT 1 FROM saved_article_folders saf WHERE saf.user_id=sa.user_id AND saf.article_id=sa.article_id AND saf.folder_id IN ("+placeholders(len(folderIDs))+"))")
+		for _, id := range folderIDs {
+			args = append(args, id)
+		}
+	}
+	if tagIDs := numericIDs(q.Get("tag")); len(tagIDs) > 0 {
+		where = append(where, "EXISTS(SELECT 1 FROM saved_article_tags sat WHERE sat.user_id=sa.user_id AND sat.article_id=sa.article_id AND sat.tag_id IN ("+placeholders(len(tagIDs))+"))")
+		for _, id := range tagIDs {
+			args = append(args, id)
+		}
+	}
+	if term := strings.TrimSpace(q.Get("q")); term != "" {
+		where = append(where, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ?)", title, description, summary))
+		like := "%" + term + "%"
+		args = append(args, like, like, like)
+	}
+	order := "sa.created_at DESC,a.id DESC"
+	switch q.Get("sort") {
+	case "saved_oldest":
+		order = "sa.created_at ASC,a.id ASC"
+	case "published_newest":
+		order = "a.published_at DESC,a.id DESC"
+	case "published_oldest":
+		order = "a.published_at ASC,a.id ASC"
+	case "title":
+		order = "a.title COLLATE NOCASE ASC,a.id DESC"
+	}
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1,%s FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY %s`, title, description, summary, readJoin, translationJoin, strings.Join(where, " AND "), order)
 	rows, e := s.db.QueryContext(r.Context(), query, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
@@ -489,7 +541,67 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 		a.IsRead = read == 1
 		out = append(out, a)
 	}
+	if err := s.attachSavedOrganization(r.Context(), u.ID, out); err != nil {
+		jsonErr(w, 500, "could not load saved organization")
+		return
+	}
 	jsonOut(w, 200, out)
+}
+
+func placeholders(count int) string { return strings.TrimRight(strings.Repeat("?,", count), ",") }
+
+func numericIDs(raw string) []int64 {
+	ids := []int64{}
+	seen := map[int64]bool{}
+	for _, value := range strings.Split(raw, ",") {
+		id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err == nil && id > 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (s *server) attachSavedOrganization(ctx context.Context, userID int64, items []article) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]any, len(items)+1)
+	ids[0] = userID
+	byID := map[int64]*article{}
+	for index := range items {
+		ids[index+1] = items[index].ID
+		byID[items[index].ID] = &items[index]
+	}
+	for _, association := range []struct {
+		table  string
+		column string
+		apply  func(*article, int64)
+	}{
+		{"saved_article_folders", "folder_id", func(a *article, id int64) { a.FolderIDs = append(a.FolderIDs, id) }},
+		{"saved_article_tags", "tag_id", func(a *article, id int64) { a.TagIDs = append(a.TagIDs, id) }},
+	} {
+		query := fmt.Sprintf("SELECT article_id,%s FROM %s WHERE user_id=? AND article_id IN (%s)", association.column, association.table, placeholders(len(items)))
+		rows, err := s.db.QueryContext(ctx, query, ids...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var articleID, collectionID int64
+			if err = rows.Scan(&articleID, &collectionID); err != nil {
+				rows.Close()
+				return err
+			}
+			if item := byID[articleID]; item != nil {
+				association.apply(item, collectionID)
+			}
+		}
+		if err = rows.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (s *server) save(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
@@ -520,6 +632,187 @@ func (s *server) unsave(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]bool{"saved": false})
 }
 
+type articleIDsRequest struct {
+	ArticleIDs []int64 `json:"article_ids"`
+}
+
+type collectionNameRequest struct {
+	Name string `json:"name"`
+}
+
+type collectionIDsRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
+func (s *server) bulkUnsave(w http.ResponseWriter, r *http.Request) {
+	var body articleIDsRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		jsonErr(w, 400, "article_ids is required")
+		return
+	}
+	ids := uniquePositiveIDs(body.ArticleIDs)
+	if len(ids) == 0 || len(ids) > 100 {
+		jsonErr(w, 400, "article_ids must contain 1 to 100 article IDs")
+		return
+	}
+	args := []any{currentUser(r).ID}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM saved_articles WHERE user_id=? AND article_id IN ("+placeholders(len(ids))+")", args...)
+	if err != nil {
+		jsonErr(w, 500, "could not remove saved articles")
+		return
+	}
+	deleted, _ := result.RowsAffected()
+	jsonOut(w, 200, map[string]int64{"removed": deleted})
+}
+
+func uniquePositiveIDs(values []int64) []int64 {
+	seen := map[int64]bool{}
+	out := []int64{}
+	for _, id := range values {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (s *server) savedOrganization(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	load := func(table, linkTable, column string) ([]savedCollection, error) {
+		query := fmt.Sprintf(`SELECT c.id,c.name,COUNT(l.article_id) FROM %s c LEFT JOIN %s l ON l.%s=c.id WHERE c.user_id=? GROUP BY c.id,c.name ORDER BY c.name COLLATE NOCASE`, table, linkTable, column)
+		rows, err := s.db.QueryContext(r.Context(), query, u.ID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := []savedCollection{}
+		for rows.Next() {
+			var item savedCollection
+			if err = rows.Scan(&item.ID, &item.Name, &item.Count); err != nil {
+				return nil, err
+			}
+			out = append(out, item)
+		}
+		return out, rows.Err()
+	}
+	folders, err := load("saved_folders", "saved_article_folders", "folder_id")
+	if err != nil {
+		jsonErr(w, 500, "could not load saved folders")
+		return
+	}
+	tags, err := load("saved_tags", "saved_article_tags", "tag_id")
+	if err != nil {
+		jsonErr(w, 500, "could not load saved tags")
+		return
+	}
+	jsonOut(w, 200, savedOrganization{Folders: folders, Tags: tags})
+}
+
+func (s *server) createSavedFolder(w http.ResponseWriter, r *http.Request) { s.createSavedCollection(w, r, "saved_folders") }
+func (s *server) createSavedTag(w http.ResponseWriter, r *http.Request)    { s.createSavedCollection(w, r, "saved_tags") }
+
+func (s *server) createSavedCollection(w http.ResponseWriter, r *http.Request, table string) {
+	var body collectionNameRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8<<10)).Decode(&body); err != nil {
+		jsonErr(w, 400, "name is required")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" || len([]rune(body.Name)) > 60 {
+		jsonErr(w, 400, "name must contain 1 to 60 characters")
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), "INSERT INTO "+table+"(user_id,name) VALUES(?,?)", currentUser(r).ID, body.Name)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			jsonErr(w, 409, "this name already exists")
+			return
+		}
+		jsonErr(w, 500, "could not create saved collection")
+		return
+	}
+	id, _ := result.LastInsertId()
+	jsonOut(w, 201, savedCollection{ID: id, Name: body.Name})
+}
+
+func (s *server) deleteSavedFolder(w http.ResponseWriter, r *http.Request) { s.deleteSavedCollection(w, r, "saved_folders") }
+func (s *server) deleteSavedTag(w http.ResponseWriter, r *http.Request)    { s.deleteSavedCollection(w, r, "saved_tags") }
+
+func (s *server) deleteSavedCollection(w http.ResponseWriter, r *http.Request, table string) {
+	result, err := s.db.ExecContext(r.Context(), "DELETE FROM "+table+" WHERE id=? AND user_id=?", chi.URLParam(r, "id"), currentUser(r).ID)
+	if err != nil {
+		jsonErr(w, 500, "could not delete saved collection")
+		return
+	}
+	count, _ := result.RowsAffected()
+	if count == 0 {
+		jsonErr(w, 404, "saved collection not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) setSavedArticleFolders(w http.ResponseWriter, r *http.Request) {
+	s.setSavedArticleCollections(w, r, "saved_article_folders", "folder_id", "saved_folders")
+}
+func (s *server) setSavedArticleTags(w http.ResponseWriter, r *http.Request) {
+	s.setSavedArticleCollections(w, r, "saved_article_tags", "tag_id", "saved_tags")
+}
+
+func (s *server) setSavedArticleCollections(w http.ResponseWriter, r *http.Request, linkTable, column, collectionTable string) {
+	var body collectionIDsRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		jsonErr(w, 400, "ids is required")
+		return
+	}
+	ids := uniquePositiveIDs(body.IDs)
+	if len(ids) > 30 {
+		jsonErr(w, 400, "at most 30 collections may be assigned")
+		return
+	}
+	u := currentUser(r)
+	articleID := chi.URLParam(r, "id")
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		jsonErr(w, 500, "could not update saved collection")
+		return
+	}
+	defer tx.Rollback()
+	var saved int
+	if err = tx.QueryRowContext(r.Context(), "SELECT 1 FROM saved_articles WHERE user_id=? AND article_id=?", u.ID, articleID).Scan(&saved); errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, 404, "saved article not found")
+		return
+	} else if err != nil {
+		jsonErr(w, 500, "could not update saved collection")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), "DELETE FROM "+linkTable+" WHERE user_id=? AND article_id=?", u.ID, articleID); err != nil {
+		jsonErr(w, 500, "could not update saved collection")
+		return
+	}
+	for _, id := range ids {
+		result, execErr := tx.ExecContext(r.Context(), "INSERT INTO "+linkTable+"(user_id,article_id,"+column+") SELECT ?,?,id FROM "+collectionTable+" WHERE id=? AND user_id=?", u.ID, articleID, id, u.ID)
+		if execErr != nil {
+			jsonErr(w, 500, "could not update saved collection")
+			return
+		}
+		count, _ := result.RowsAffected()
+		if count == 0 {
+			jsonErr(w, 400, "one or more collections do not belong to the user")
+			return
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		jsonErr(w, 500, "could not update saved collection")
+		return
+	}
+	jsonOut(w, 200, map[string][]int64{"ids": ids})
+}
+
 // startReading creates or refreshes an entry in the user's history. A completed
 // article remains completed when it is opened again, so the read state is never
 // accidentally reverted by a page refresh.
@@ -529,6 +822,46 @@ func (s *server) startReading(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) markRead(w http.ResponseWriter, r *http.Request) {
 	s.setReadingStatus(w, r, "read")
+}
+
+type aiFeedbackRequest struct {
+	IssueType string `json:"issue_type"`
+	Reason    string `json:"reason"`
+}
+
+func (s *server) submitAIFeedback(w http.ResponseWriter, r *http.Request) {
+	var body aiFeedbackRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 32<<10)).Decode(&body); err != nil {
+		jsonErr(w, 400, "issue_type and reason are required")
+		return
+	}
+	body.IssueType = strings.TrimSpace(body.IssueType)
+	body.Reason = strings.TrimSpace(body.Reason)
+	if body.IssueType != "incorrect" && body.IssueType != "missing" {
+		jsonErr(w, 400, "issue_type must be incorrect or missing")
+		return
+	}
+	if len([]rune(body.Reason)) < 3 || len([]rune(body.Reason)) > 2000 {
+		jsonErr(w, 400, "reason must contain 3 to 2000 characters")
+		return
+	}
+	var summary, original string
+	err := s.db.QueryRowContext(r.Context(), "SELECT summary,CASE WHEN full_content<>'' THEN full_content ELSE description END FROM articles WHERE id=?", chi.URLParam(r, "id")).Scan(&summary, &original)
+	if errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, 404, "article not found")
+		return
+	}
+	if err != nil {
+		jsonErr(w, 500, "could not load article for feedback")
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), `INSERT INTO article_ai_feedback(user_id,article_id,issue_type,reason,summary_snapshot,original_content_snapshot) VALUES(?,?,?,?,?,?)`, currentUser(r).ID, chi.URLParam(r, "id"), body.IssueType, body.Reason, summary, original)
+	if err != nil {
+		jsonErr(w, 500, "could not save AI feedback")
+		return
+	}
+	id, _ := result.LastInsertId()
+	jsonOut(w, http.StatusCreated, map[string]int64{"id": id})
 }
 
 func (s *server) setReadingStatus(w http.ResponseWriter, r *http.Request, status string) {

@@ -81,8 +81,12 @@ Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-
 | GET | `/api/articles/:id` | Chi tiết bài |
 | POST | `/api/articles/:id/translations/vi` | Dịch và lấy cache tiếng Việt (Telegram auth) |
 | GET | `/api/categories` | Danh sách category |
-| GET | `/api/saved` | Bài đã lưu (Telegram auth) |
+| GET | `/api/saved?q=ai&folder=1&tag=2&sort=title` | Tìm kiếm, lọc và sắp xếp bài đã lưu (Telegram auth) |
 | POST/DELETE | `/api/saved/:id` | Lưu/bỏ lưu (Telegram auth) |
+| DELETE | `/api/saved` | Bỏ lưu hàng loạt với `{ "article_ids": [...] }` (Telegram auth) |
+| GET | `/api/saved/organization` | Folder/tag và số bài trong mỗi mục (Telegram auth) |
+| POST/DELETE | `/api/saved/folders`, `/api/saved/tags` | Tạo/xoá folder hoặc tag (Telegram auth) |
+| PUT | `/api/saved/:id/folders`, `/api/saved/:id/tags` | Thay thế các folder/tag với `{ "ids": [...] }` (Telegram auth) |
 | POST | `/api/articles/:id/reading` | Ghi nhận bài đang đọc (Telegram auth) |
 | POST | `/api/articles/:id/read` | Đánh dấu bài đã đọc (Telegram auth) |
 | GET | `/api/reading-history` | Lịch sử đọc, mới nhất trước (Telegram auth) |

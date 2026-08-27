@@ -22,7 +22,7 @@ type article struct {
 	ID            int64    `json:"id"`
 	Title         string   `json:"title"`
 	Description   string   `json:"description"`
-	FullContent   string   `json:"-"`
+	FullContent   string   `json:"original_content,omitempty"`
 	Summary       string   `json:"summary"`
 	URL           string   `json:"url"`
 	ImageURL      string   `json:"image_url"`
@@ -35,6 +35,19 @@ type article struct {
 	PublishedAt   string   `json:"published_at"`
 	IsSaved       bool     `json:"is_saved"`
 	IsRead        bool     `json:"is_read"`
+	FolderIDs     []int64  `json:"folder_ids,omitempty"`
+	TagIDs        []int64  `json:"tag_ids,omitempty"`
+}
+
+type savedCollection struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type savedOrganization struct {
+	Folders []savedCollection `json:"folders"`
+	Tags    []savedCollection `json:"tags"`
 }
 
 type translation struct {

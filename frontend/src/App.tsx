@@ -8,6 +8,7 @@ import type {
   Country,
   FeaturedBrief,
   GoldRate,
+  SavedOrganization,
   Source,
   Translation,
 } from "./types";
@@ -57,6 +58,23 @@ const text = {
     hideRead: "Hide read",
     showRead: "Show read",
     markRead: "Mark as read",
+    feedbackIncorrect: "Summary is incorrect",
+    feedbackMissing: "Summary misses something",
+    feedbackReason: "What is wrong or missing?",
+    sendFeedback: "Send feedback",
+    feedbackThanks: "Thanks — your feedback was recorded.",
+    originalContent: "Review original text",
+    sortSaved: "Sort saved",
+    savedNewest: "Recently saved",
+    savedOldest: "Oldest saved",
+    publishedNewest: "Newest published",
+    titleSort: "Title",
+    folders: "Folders",
+    tags: "Tags",
+    addFolder: "Add folder",
+    addTag: "Add tag",
+    selectSaved: "Select article",
+    removeSelected: "Remove selected",
     filter: "Filter",
     newest: "Latest",
     all: "All",
@@ -117,6 +135,23 @@ const text = {
     hideRead: "Ẩn bài đã đọc",
     showRead: "Hiện bài đã đọc",
     markRead: "Đánh dấu đã đọc",
+    feedbackIncorrect: "Tóm tắt sai",
+    feedbackMissing: "Tóm tắt thiếu",
+    feedbackReason: "Thông tin nào sai hoặc bị thiếu?",
+    sendFeedback: "Gửi phản hồi",
+    feedbackThanks: "Cảm ơn — phản hồi của bạn đã được ghi nhận.",
+    originalContent: "Xem nguyên văn liên quan",
+    sortSaved: "Sắp xếp bài đã lưu",
+    savedNewest: "Mới lưu gần đây",
+    savedOldest: "Lưu lâu nhất",
+    publishedNewest: "Mới xuất bản",
+    titleSort: "Tiêu đề",
+    folders: "Thư mục",
+    tags: "Nhãn",
+    addFolder: "Thêm thư mục",
+    addTag: "Thêm nhãn",
+    selectSaved: "Chọn bài viết",
+    removeSelected: "Xoá mục đã chọn",
     filter: "Lọc",
     newest: "Mới nhất",
     all: "Tất cả",
@@ -649,12 +684,16 @@ function Card({
   locale,
   toggle,
   openDetail,
+  selected,
+  select,
 }: {
   article: Article;
   hero?: boolean;
   locale: Locale;
   toggle: (article: Article) => void;
   openDetail: (article: Article) => void;
+  selected?: boolean;
+  select?: (article: Article) => void;
 }) {
   const t = text[locale];
   return (
@@ -705,6 +744,7 @@ function Card({
       >
         <Icon name="bookmark" filled={article.is_saved} />
       </button>
+      {select && <label className="save"><input type="checkbox" checked={selected} onChange={() => select(article)} aria-label={`${t.selectSaved}: ${article.title}`} /></label>}
     </article>
   );
 }
@@ -727,6 +767,10 @@ function Detail({
   const [resummarizing, setResummarizing] = useState(false);
   const [resummarizeFailed, setResummarizeFailed] = useState(false);
   const [isRead, setIsRead] = useState(article.is_read);
+  const [feedbackIssue, setFeedbackIssue] = useState<"incorrect" | "missing" | null>(null);
+  const [feedbackReason, setFeedbackReason] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackFailed, setFeedbackFailed] = useState(false);
   const t = text[locale];
   const translate = () => {
     if (locale !== "vi") return;
@@ -758,6 +802,10 @@ function Detail({
     setManualBrief(null);
     setResummarizeFailed(false);
     setIsRead(article.is_read);
+    setFeedbackIssue(null);
+    setFeedbackReason("");
+    setFeedbackSent(false);
+    setFeedbackFailed(false);
     if (locale === "vi") translate();
   }, [article.id, locale]);
   useEffect(() => {
@@ -776,6 +824,16 @@ function Detail({
   const contentImages =
     article.content_images?.filter((image) => image !== article.image_url) ??
     [];
+  const submitFeedback = async () => {
+    if (!feedbackIssue || feedbackReason.trim().length < 3) return;
+    setFeedbackFailed(false);
+    try {
+      await api.submitAIFeedback(article.id, feedbackIssue, feedbackReason.trim());
+      setFeedbackSent(true);
+      setFeedbackIssue(null);
+      setFeedbackReason("");
+    } catch { setFeedbackFailed(true); }
+  };
   return (
     <section className="page detail">
       <button className="back-button" onClick={back}>
@@ -845,9 +903,15 @@ function Detail({
             </p>
           )}
           <p className="ai-notice">{aiNotice}</p>
+          <div className="ai-feedback" aria-label={locale === "vi" ? "Phản hồi chất lượng AI" : "AI quality feedback"}>
+            <button className="text-button" onClick={() => { setFeedbackIssue("incorrect"); setFeedbackSent(false); }}>{t.feedbackIncorrect}</button>
+            <button className="text-button" onClick={() => { setFeedbackIssue("missing"); setFeedbackSent(false); }}>{t.feedbackMissing}</button>
+          </div>
+          {feedbackIssue && <div className="ai-feedback-form"><label>{t.feedbackReason}<textarea value={feedbackReason} onChange={event => setFeedbackReason(event.target.value)} rows={3} maxLength={2000} /></label><button className="text-button" disabled={feedbackReason.trim().length < 3} onClick={() => void submitFeedback()}>{t.sendFeedback}</button>{feedbackFailed && <p className="state error">{t.loadError}</p>}</div>}
+          {feedbackSent && <p className="ai-notice">{t.feedbackThanks}</p>}
         </section>
       }
-      {<RSSDescription description={article.description} locale={locale} />}
+      <details className="article-content"><summary>{t.originalContent}</summary><RSSDescription description={article.original_content || article.description} locale={locale} /></details>
       {!isRead && (
         <button className="text-button" onClick={() => api.markRead(article.id).then(() => setIsRead(true)).catch(() => {})}>
           {t.markRead}
@@ -890,6 +954,11 @@ function Home({
   const [hasMore, setHasMore] = useState(true);
   const [reload, setReload] = useState(0);
   const [hideRead, setHideRead] = useState(false);
+  const [savedOrganization, setSavedOrganization] = useState<SavedOrganization>({ folders: [], tags: [] });
+  const [savedFolder, setSavedFolder] = useState("");
+  const [savedTag, setSavedTag] = useState("");
+  const [savedSort, setSavedSort] = useState("saved_newest");
+  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
   const t = text[locale];
   const params = useMemo(
     () =>
@@ -902,8 +971,11 @@ function Home({
         ...(filter.country && { country: filter.country }),
         ...(filter.query && { q: filter.query }),
         ...(hideRead && { hide_read: "1" }),
+        ...(saved && savedFolder && { folder: savedFolder }),
+        ...(saved && savedTag && { tag: savedTag }),
+        ...(saved && { sort: savedSort }),
       }),
-    [filter, hideRead, locale, offset],
+    [filter, hideRead, locale, offset, saved, savedFolder, savedTag, savedSort],
   );
   useEffect(() => {
     const timer = window.setTimeout(
@@ -936,7 +1008,7 @@ function Home({
     return () => window.removeEventListener("popstate", syncFilters);
   }, [saved, history]);
   useEffect(() => {
-    if (!saved && !history)
+    if (!history)
       Promise.all([api.categories(), api.sources(), api.countries()])
         .then(([a, b, c]) => {
           setCats(a);
@@ -946,16 +1018,19 @@ function Home({
         .catch(() => {});
   }, [saved, history]);
   useEffect(() => {
+    if (saved) api.savedOrganization().then(setSavedOrganization).catch(() => {});
+  }, [saved, reload]);
+  useEffect(() => {
     setOffset(0);
     setHasMore(true);
-  }, [filter, locale, saved]);
+  }, [filter, locale, saved, history, savedFolder, savedTag, savedSort]);
   useEffect(() => {
     let active = true;
     if (offset === 0) {
       setLoading(true);
       setError(false);
     } else setLoadingMore(true);
-    (history ? api.readingHistory(locale) : saved ? api.saved(locale) : api.articles(params))
+    (history ? api.readingHistory(locale) : saved ? api.saved(params) : api.articles(params))
       .then((next) => {
         if (!active) return;
         setItems((current) => (offset === 0 ? next : [...current, ...next]));
@@ -997,6 +1072,32 @@ function Home({
     } catch {
       setError(true);
     }
+  };
+  const toggleSelected = (article: Article) => setSelectedIDs(current => current.includes(article.id) ? current.filter(id => id !== article.id) : [...current, article.id]);
+  const removeSelected = async () => {
+    if (!selectedIDs.length) return;
+    try {
+      await api.bulkUnsave(selectedIDs);
+      setItems(current => current.filter(article => !selectedIDs.includes(article.id)));
+      setSelectedIDs([]);
+      setReload(value => value + 1);
+    } catch { setError(true); }
+  };
+  const addCollection = async (type: "folder" | "tag") => {
+    const name = window.prompt(type === "folder" ? t.addFolder : t.addTag);
+    if (!name?.trim()) return;
+    try {
+      const item = type === "folder" ? await api.createSavedFolder(name) : await api.createSavedTag(name);
+      setSavedOrganization(current => type === "folder" ? { ...current, folders: [...current.folders, item] } : { ...current, tags: [...current.tags, item] });
+    } catch { setError(true); }
+  };
+  const assignCollection = async (type: "folder" | "tag", id: number) => {
+    if (!selectedIDs.length || !id) return;
+    const selected = items.filter(article => selectedIDs.includes(article.id));
+    try {
+      await Promise.all(selected.map(article => type === "folder" ? api.setSavedFolders(article.id, [...new Set([...(article.folder_ids ?? []), id])]) : api.setSavedTags(article.id, [...new Set([...(article.tag_ids ?? []), id])])));
+      setReload(value => value + 1);
+    } catch { setError(true); }
   };
   const toggle = async (article: Article) => {
     setItems((current) =>
@@ -1051,7 +1152,7 @@ function Home({
           {!saved && !history && <button className="text-button" onClick={() => setHideRead(value => !value)}>{hideRead ? t.showRead : t.hideRead}</button>}
         </div>
       </header>
-      {!saved && !history && (
+      {!history && (
         <FilterControls
           locale={locale}
           filter={filter}
@@ -1065,6 +1166,13 @@ function Home({
       )}
       {!saved && !history && <GoldRates locale={locale} />}
       {history && <button className="text-button" onClick={clearHistory}>{t.clearHistory}</button>}
+      {saved && <section className="filter-controls" aria-label={t.saved}>
+        <label className="filter-field"><span>{t.sortSaved}</span><select value={savedSort} onChange={event => setSavedSort(event.target.value)}><option value="saved_newest">{t.savedNewest}</option><option value="saved_oldest">{t.savedOldest}</option><option value="published_newest">{t.publishedNewest}</option><option value="title">{t.titleSort}</option></select></label>
+        <label className="filter-field"><span>{t.folders}</span><select value={savedFolder} onChange={event => setSavedFolder(event.target.value)}><option value="">{t.all}</option>{savedOrganization.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name} ({folder.count})</option>)}</select></label>
+        <label className="filter-field"><span>{t.tags}</span><select value={savedTag} onChange={event => setSavedTag(event.target.value)}><option value="">{t.all}</option>{savedOrganization.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name} ({tag.count})</option>)}</select></label>
+        <button className="text-button" onClick={() => void addCollection("folder")}>{t.addFolder}</button><button className="text-button" onClick={() => void addCollection("tag")}>{t.addTag}</button>
+        {selectedIDs.length > 0 && <><button className="text-button" onClick={() => void removeSelected()}>{t.removeSelected} ({selectedIDs.length})</button><select defaultValue="" onChange={event => { void assignCollection("folder", Number(event.target.value)); event.currentTarget.value = ""; }}><option value="">{t.folders}</option>{savedOrganization.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><select defaultValue="" onChange={event => { void assignCollection("tag", Number(event.target.value)); event.currentTarget.value = ""; }}><option value="">{t.tags}</option>{savedOrganization.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></>}
+      </section>}
       {loading ? (
         <p className="state" role="status">
           {t.loading}
@@ -1106,6 +1214,8 @@ function Home({
                 locale={locale}
                 toggle={toggle}
                 openDetail={openDetail}
+                selected={selectedIDs.includes(item.id)}
+                select={saved ? toggleSelected : undefined}
                 key={item.id}
               />
             ))}
