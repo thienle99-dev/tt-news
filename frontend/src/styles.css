@@ -208,6 +208,23 @@ small {
   border-radius: 999px;
   font-size: 12px;
 }
+.theme-toggle {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+}
+.theme-toggle:hover,
+.theme-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.theme-toggle .icon { width: 18px; height: 18px; }
 .section-kicker {
   margin: 24px 0 10px;
 }

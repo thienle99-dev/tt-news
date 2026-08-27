@@ -14,6 +14,7 @@ import type {
 
 type Tab = "home" | "featured" | "saved" | "settings";
 type Locale = "en" | "vi";
+type Theme = "light" | "dark";
 type Filters = {
   category: string;
   source: string;
@@ -77,6 +78,8 @@ const text = {
     settings: "Settings",
     interface: "INTERFACE",
     theme: "Theme follows Telegram or your device setting.",
+    switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode",
     back: "Back",
     readOriginal: "Read original article",
     openArticle: "Open article",
@@ -130,6 +133,8 @@ const text = {
     settings: "Cài đặt",
     interface: "GIAO DIỆN",
     theme: "Theme tự động theo Telegram hoặc thiết bị của bạn.",
+    switchToDark: "Chuyển sang giao diện tối",
+    switchToLight: "Chuyển sang giao diện sáng",
     back: "Quay lại",
     readOriginal: "Đọc bài gốc",
     openArticle: "Mở bài viết",
@@ -249,7 +254,9 @@ function Icon({
     | "arrow-left"
     | "arrow-up-right"
     | "close"
-    | "pen";
+    | "pen"
+    | "moon"
+    | "sun";
   filled?: boolean;
 }) {
   const common = {
@@ -281,6 +288,13 @@ function Icon({
         {...common}
         d="M6 3.8A1.8 1.8 0 0 1 7.8 2h8.4A1.8 1.8 0 0 1 18 3.8V22l-6-3.6L6 22Z"
       />
+    ),
+    moon: <path {...common} d="M20.5 15.4A8.6 8.6 0 0 1 8.6 3.5 8.6 8.6 0 1 0 20.5 15.4Z" />,
+    sun: (
+      <>
+        <circle {...common} cx="12" cy="12" r="4" />
+        <path {...common} d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </>
     ),
     settings: (
       <>
@@ -494,6 +508,21 @@ function LanguagePicker({
         { value: "vi", label: "Tiếng Việt" },
       ]}
     />
+  );
+}
+function ThemeToggle({ theme, toggle, locale }: { theme: Theme; toggle: () => void; locale: Locale }) {
+  const t = text[locale];
+  const isDark = theme === "dark";
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-label={isDark ? t.switchToLight : t.switchToDark}
+      aria-pressed={isDark}
+      onClick={toggle}
+    >
+      <Icon name={isDark ? "sun" : "moon"} />
+    </button>
   );
 }
 const goldPrice = (value: number) =>
@@ -813,11 +842,15 @@ function Home({
   saved,
   locale,
   setLocale,
+  theme,
+  toggleTheme,
   openDetail,
 }: {
   saved?: boolean;
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  theme: Theme;
+  toggleTheme: () => void;
   openDetail: (article: Article) => void;
 }) {
   const [items, setItems] = useState<Article[]>([]);
@@ -980,6 +1013,7 @@ function Home({
         </div>
         <div className="header-actions">
           <LanguagePicker locale={locale} setLocale={setLocale} />
+          <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
         </div>
       </header>
       {!saved && (
@@ -1270,6 +1304,14 @@ export default function App() {
   const [locale, setLocaleState] = useState<Locale>(
     () => (localStorage.getItem("locale") as Locale) || telegramLocale,
   );
+  const [themeOverride, setThemeOverride] = useState<Theme | null>(() => {
+    const saved = localStorage.getItem("theme");
+    return saved === "light" || saved === "dark" ? saved : null;
+  });
+  const [automaticTheme, setAutomaticTheme] = useState<Theme>(() =>
+    window.Telegram?.WebApp?.colorScheme ??
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
+  );
   const [tab, setTab] = useState<Tab>("home");
   const [article, setArticle] = useState<Article | null>(null);
   const [articleID, setArticleID] = useState<number | null>(articleIDFromPath);
@@ -1281,14 +1323,17 @@ export default function App() {
     setLocaleState(next);
   };
   const t = text[locale];
+  const theme = themeOverride ?? automaticTheme;
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    localStorage.setItem("theme", next);
+    setThemeOverride(next);
+  };
   useEffect(() => {
     const app = window.Telegram?.WebApp;
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
     const applyTheme = () => {
-      document.documentElement.dataset.telegramTheme =
-        (app?.colorScheme ?? (systemTheme.matches ? "dark" : "light")) === "dark"
-          ? "dark"
-          : "light";
+      setAutomaticTheme(app?.colorScheme ?? (systemTheme.matches ? "dark" : "light"));
     };
     applyTheme();
     if (app) {
@@ -1300,6 +1345,9 @@ export default function App() {
     systemTheme.addEventListener("change", applyTheme);
     return () => systemTheme.removeEventListener("change", applyTheme);
   }, []);
+  useEffect(() => {
+    document.documentElement.dataset.telegramTheme = theme;
+  }, [theme]);
   useEffect(() => {
     const onPopState = () => setArticleID(articleIDFromPath());
     window.addEventListener("popstate", onPopState);
@@ -1362,6 +1410,8 @@ export default function App() {
             <Home
               locale={locale}
               setLocale={setLocale}
+              theme={theme}
+              toggleTheme={toggleTheme}
               openDetail={openDetail}
             />
           )}
@@ -1377,6 +1427,8 @@ export default function App() {
               saved
               locale={locale}
               setLocale={setLocale}
+              theme={theme}
+              toggleTheme={toggleTheme}
               openDetail={openDetail}
             />
           )}

@@ -29,6 +29,35 @@
 .category-chips button:hover { border-color:var(--accent); color:var(--accent); }
 .category-chips button.selected { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:700; }
 .category-chips b { font-size:11px; line-height:1; }
+.category-chips .category-technology { background:#e9e7ff; border-color:#d9d3ff; color:#5b3db4; }
+.category-chips .category-programming { background:#dceeff; border-color:#c6e1ff; color:#1665b5; }
+.category-chips .category-world { background:#dff5f6; border-color:#c3e9eb; color:#08767d; }
+.category-chips .category-business { background:#fff0d8; border-color:#ffe0b0; color:#a75b00; }
+.category-chips .category-society { background:#fce3eb; border-color:#f8cad9; color:#b33563; }
+.category-chips .category-culture { background:#f7e8ff; border-color:#eed2fb; color:#8d4cb0; }
+.category-chips .category-sports { background:#def5e7; border-color:#c4ead3; color:#23754c; }
+.category-chips .category-education { background:#ffe9d8; border-color:#ffd5b7; color:#ae5825; }
+.category-chips .category-health { background:#fbe2f0; border-color:#f4c8df; color:#b42a77; }
+.category-chips .category-science { background:#e0f3ff; border-color:#c4e8fb; color:#2378a5; }
+.category-chips .category-security { background:#fde5e1; border-color:#f8cbc5; color:#b84436; }
+.category-chips .category-ai { background:#eee4ff; border-color:#dfcffb; color:#7041ae; }
+.category-chips .category-llm { background:#e3eaff; border-color:#ccd8fb; color:#4c5db6; }
+.category-chips .category-cybersecurity { background:#d9f4ed; border-color:#bee8dd; color:#18766b; }
+.category-chips .category-chip.selected { box-shadow:inset 0 0 0 1px currentColor; font-weight:700; }
+:root[data-telegram-theme="dark"] .category-chips .category-technology { background:#33285a; border-color:#514080; color:#d5c7ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-programming { background:#18365d; border-color:#285286; color:#b6d8ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-world { background:#163e42; border-color:#256369; color:#a8e1e2; }
+:root[data-telegram-theme="dark"] .category-chips .category-business { background:#4d351c; border-color:#785329; color:#ffd59a; }
+:root[data-telegram-theme="dark"] .category-chips .category-society { background:#4b2434; border-color:#74364f; color:#ffc1d4; }
+:root[data-telegram-theme="dark"] .category-chips .category-culture { background:#412850; border-color:#643d7b; color:#eac7ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-sports { background:#1c4930; border-color:#2f704a; color:#b4e9ca; }
+:root[data-telegram-theme="dark"] .category-chips .category-education { background:#4e2d20; border-color:#774633; color:#ffd0af; }
+:root[data-telegram-theme="dark"] .category-chips .category-health { background:#4d2340; border-color:#78375f; color:#ffc0e0; }
+:root[data-telegram-theme="dark"] .category-chips .category-science { background:#1c4054; border-color:#2d6583; color:#b5e3ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-security { background:#542720; border-color:#823d33; color:#ffc4bb; }
+:root[data-telegram-theme="dark"] .category-chips .category-ai { background:#3e2857; border-color:#604080; color:#ddc5ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-llm { background:#293660; border-color:#40538f; color:#cbd5ff; }
+:root[data-telegram-theme="dark"] .category-chips .category-cybersecurity { background:#16443d; border-color:#246b60; color:#a9e6d9; }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .featured-lead { padding:28px 0 22px; border-bottom:2px solid var(--ink); }
 .featured-lead h2,.featured-topic h2 { margin:10px 0; font:600 clamp(1.8rem,6vw,2.6rem)/1.05 Newsreader,Georgia,serif; letter-spacing:-.025em; text-wrap:balance; }
