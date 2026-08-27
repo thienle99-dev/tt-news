@@ -3,30 +3,40 @@ package translation
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
+type testRoundTripper func(*http.Request) (*http.Response, error)
+
+func (fn testRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
 func TestModelsAndChatUsePathsBelowBaseURL(t *testing.T) {
 	requests := []string{}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpClient := &http.Client{Transport: testRoundTripper(func(r *http.Request) (*http.Response, error) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		if r.Header.Get("Authorization") != "Bearer secret" {
 			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
 		}
+		body := ""
 		switch r.URL.Path {
 		case "/gateway/v1/models":
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "model-z"}, {"id": "model-a", "owned_by": "test"}}})
+			data, _ := json.Marshal(map[string]any{"data": []map[string]string{{"id": "model-z"}, {"id": "model-a", "owned_by": "test"}}})
+			body = string(data)
 		case "/gateway/v1/chat/completions":
-			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{"message": map[string]string{"content": "OK"}}}})
+			data, _ := json.Marshal(map[string]any{"choices": []map[string]any{{"message": map[string]string{"content": "OK"}}}})
+			body = string(data)
 		default:
-			http.NotFound(w, r)
+			return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: io.NopCloser(strings.NewReader("not found")), Header: make(http.Header)}, nil
 		}
-	}))
-	defer server.Close()
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
 
-	client := Client{URL: server.URL + "/gateway/v1/", APIKey: "secret", Model: "model-a"}
+	client := Client{URL: "https://example.test/gateway/v1/", APIKey: "secret", Model: "model-a", HTTPClient: httpClient}
 	models, err := client.Models(context.Background())
 	if err != nil {
 		t.Fatal(err)
