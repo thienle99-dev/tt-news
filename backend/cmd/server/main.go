@@ -163,11 +163,14 @@ func runFeaturedOnce(cfg config) {
 }
 
 type server struct {
-	db            *sql.DB
-	cfg           config
-	feed          *gofeed.Parser
-	translationMu sync.Mutex
-	featuredMu    sync.Mutex
+	db             *sql.DB
+	cfg            config
+	feed           *gofeed.Parser
+	translationMu  sync.Mutex
+	featuredMu     sync.Mutex
+	goldRatesMu    sync.Mutex
+	goldRates      []goldRate
+	goldRatesUntil time.Time
 }
 
 func (s *server) routes() http.Handler {
@@ -182,6 +185,7 @@ func (s *server) routes() http.Handler {
 		r.Get("/sources", s.sources)
 		r.Get("/countries", s.countries)
 		r.Get("/featured", s.featured)
+		r.Get("/gold-rates", s.goldRatesHandler)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
@@ -569,7 +573,7 @@ func (s *server) runRSS(ctx context.Context) {
 
 type rssFetchResult struct {
 	FeedItems, Inserted, Existing, BeforeSince, Invalid int
-	Duration                                           time.Duration
+	Duration                                            time.Duration
 }
 
 func (result *rssFetchResult) add(other rssFetchResult) {

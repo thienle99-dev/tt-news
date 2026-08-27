@@ -9,3 +9,4 @@ export type Translation = Pick<Article, 'title' | 'description' | 'summary'>
 export type FeaturedTopic = { id: number; position: number; title: string; summary: string; articles: Article[] }
 export type FeaturedBrief = { id: number; generated_at: string; window_start: string; window_end: string; title: string; intro: string; topics: FeaturedTopic[] }
 export type TelegramUser = { telegram_id: number; username: string; first_name: string; last_name: string; photo_url: string }
+export type GoldRate = { code: string; name: string; buy_price: number; sell_price: number; unit: string; trend: string; trend_value: string; last_updated: string }

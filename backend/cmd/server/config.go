@@ -7,20 +7,21 @@ import (
 )
 
 type config struct {
-	Port, DBPath, BotToken, MiniAppURL string
-	AIURL, AIKey, AIModel              string
-	RSSInterval, AuthMaxAge            time.Duration
+	Port, DBPath, BotToken, MiniAppURL         string
+	GoldRatesURL                               string
+	AIURL, AIKey, AIModel                      string
+	RSSInterval, AuthMaxAge                    time.Duration
 	FeaturedBriefInterval, FeaturedBriefWindow time.Duration
-	ContentCleanupInterval                 time.Duration
-	RSSContentUserAgent                string
-	RSSFetchWorkers                    int
-	ContentCleanupLimit                 int
-	DevAuth                            bool
-	AIBackgroundScanning                bool
-	AITranslateEnabled                  bool
-	AITranslateLanguage                 string
-	RSSTranslateVietnamese             bool
-	DevUserID                          int64
+	ContentCleanupInterval                     time.Duration
+	RSSContentUserAgent                        string
+	RSSFetchWorkers                            int
+	ContentCleanupLimit                        int
+	DevAuth                                    bool
+	AIBackgroundScanning                       bool
+	AITranslateEnabled                         bool
+	AITranslateLanguage                        string
+	RSSTranslateVietnamese                     bool
+	DevUserID                                  int64
 }
 
 func loadConfig() config {
@@ -29,6 +30,7 @@ func loadConfig() config {
 		DBPath:                 env("DATABASE_PATH", "/data/news.db"),
 		BotToken:               os.Getenv("TELEGRAM_BOT_TOKEN"),
 		MiniAppURL:             os.Getenv("MINI_APP_URL"),
+		GoldRatesURL:           env("GOLD_RATES_URL", "https://baotinmanhhai.vn/api/graphql"),
 		AIURL:                  os.Getenv("AI_URL"),
 		AIKey:                  os.Getenv("AI_KEY"),
 		AIModel:                env("AI_MODEL", "gpt-4o-mini"),

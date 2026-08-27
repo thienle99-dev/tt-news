@@ -9,6 +9,8 @@
   --accent: #b3261e;
   --accent-soft: #fce9e6;
   --focus: #1e40af;
+  --positive: #196c3d;
+  --negative: #a5261d;
   --shadow: 0 12px 32px rgb(23 28 27 / 8%);
   font-family: Roboto, Arial, sans-serif;
   color: var(--ink);
@@ -24,6 +26,8 @@
   --accent: #ffb4aa;
   --accent-soft: #3b1f1d;
   --focus: #a9c7ff;
+  --positive: #93d4a8;
+  --negative: #ffb4aa;
   --shadow: 0 12px 32px rgb(0 0 0 / 28%);
   color-scheme: dark;
 }
@@ -344,6 +348,121 @@ small {
   display: grid;
   gap: 12px;
   margin-top: 30px;
+}
+.gold-rates {
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 16px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.gold-rates-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 16px 14px;
+}
+.gold-rates-heading h2 {
+  margin: 5px 0 0;
+  font: 600 1.55rem/1 Newsreader, Georgia, serif;
+  letter-spacing: -0.02em;
+}
+.gold-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--accent);
+  font: 700 11px/1.3 Roboto, sans-serif;
+  text-decoration: none;
+  text-align: right;
+}
+.gold-source-link:hover { text-decoration: underline; }
+.gold-source-link .icon { width: 14px; height: 14px; }
+.gold-rates-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+.gold-rate {
+  min-width: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.gold-rate:nth-child(odd) { border-right: 1px solid var(--line); }
+.gold-rate:nth-last-child(-n + 2) { border-bottom: 0; }
+.gold-rate p { margin: 0; }
+.gold-rate-name {
+  overflow: hidden;
+  font: 700 13px/1.25 Roboto, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gold-rate-unit {
+  margin-top: 4px !important;
+  color: var(--muted);
+  font: 11px/1.3 Roboto, sans-serif;
+}
+.gold-rate dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 13px 0 0;
+}
+.gold-rate dt {
+  color: var(--muted);
+  font: 700 9px/1.2 Roboto, sans-serif;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.gold-rate dd {
+  margin: 4px 0 0;
+  font: 700 13px/1.2 Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.gold-rate-trend {
+  margin-top: 12px !important;
+  font: 700 11px/1.25 Roboto, sans-serif;
+}
+.gold-rate-trend.up { color: var(--positive); }
+.gold-rate-trend.down { color: var(--negative); }
+.gold-rates-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 11px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 11px/1.35 Roboto, sans-serif;
+}
+.gold-rates-meta span:last-child { max-width: 40ch; text-align: right; }
+.gold-rates-loading,
+.gold-rates-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 160px;
+  margin: 0;
+  padding: 20px;
+  color: var(--muted);
+  font: 13px/1.45 Roboto, sans-serif;
+  text-align: center;
+}
+.gold-rates-error { color: var(--negative); }
+@media (max-width: 440px) {
+  .gold-rates-heading { align-items: start; }
+  .gold-source-link { max-width: 10ch; }
+  .gold-rates-grid { grid-template-columns: 1fr; }
+  .gold-rate,
+  .gold-rate:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  .gold-rate:nth-child(odd) { border-right: 0; }
+  .gold-rate:last-child { border-bottom: 0; }
+  .gold-rates-meta { display: grid; }
+  .gold-rates-meta span:last-child { max-width: none; text-align: left; }
 }
 .section-head {
   display: flex;

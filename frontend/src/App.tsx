@@ -7,6 +7,7 @@ import type {
   Category,
   Country,
   FeaturedBrief,
+  GoldRate,
   Source,
   Translation,
 } from "./types";
@@ -86,6 +87,14 @@ const text = {
     articleContent: "ARTICLE",
     source: "Source",
     summaryEmpty: "No summary yet. Use the sparkle button to generate one.",
+    goldPrices: "Gold prices",
+    goldLive: "LIVE REFERENCE",
+    goldBuy: "Buy",
+    goldSell: "Sell",
+    goldUpdated: "Updated",
+    goldUnavailable: "Gold prices are temporarily unavailable.",
+    goldViewSource: "View source table",
+    goldDisclaimer: "Reference prices from Bảo Tín Mạnh Hải. Confirm before trading.",
   },
   vi: {
     masthead: "SIGNAL BRIEF",
@@ -130,6 +139,14 @@ const text = {
     articleContent: "NỘI DUNG BÀI VIẾT",
     source: "Nguồn",
     summaryEmpty: "Chưa có bản tóm tắt. Nhấn nút ở góc phải để AI tạo tóm tắt.",
+    goldPrices: "Giá vàng",
+    goldLive: "THAM KHẢO TRỰC TIẾP",
+    goldBuy: "Mua",
+    goldSell: "Bán",
+    goldUpdated: "Cập nhật",
+    goldUnavailable: "Tạm thời không tải được giá vàng.",
+    goldViewSource: "Xem bảng giá gốc",
+    goldDisclaimer: "Giá tham khảo từ Bảo Tín Mạnh Hải. Hãy xác nhận trước khi giao dịch.",
   },
 } as const;
 const category = (slug: string, locale: Locale) =>
@@ -473,6 +490,112 @@ function LanguagePicker({
         { value: "vi", label: "Tiếng Việt" },
       ]}
     />
+  );
+}
+const goldPrice = (value: number) =>
+  new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value);
+const goldTime = (value: string) => value.replace(/\.\d+$/, "");
+function GoldRates({ locale }: { locale: Locale }) {
+  const [rates, setRates] = useState<GoldRate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+  const t = text[locale];
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      api
+        .goldRates()
+        .then((next) => {
+          if (!active) return;
+          setRates(next);
+          setFailed(false);
+        })
+        .catch(() => {
+          if (active) setFailed(true);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+    load();
+    const refresh = window.setInterval(load, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(refresh);
+    };
+  }, [reload]);
+  const updated = rates[0]?.last_updated;
+  return (
+    <section className="gold-rates" aria-labelledby="gold-rates-title">
+      <div className="gold-rates-heading">
+        <div>
+          <small>{t.goldLive}</small>
+          <h2 id="gold-rates-title">{t.goldPrices}</h2>
+        </div>
+        <a
+          className="gold-source-link"
+          href="https://baotinmanhhai.vn/bang-gia-vang"
+          onClick={(event) => {
+            event.preventDefault();
+            open("https://baotinmanhhai.vn/bang-gia-vang");
+          }}
+        >
+          {t.goldViewSource}
+          <Icon name="arrow-up-right" />
+        </a>
+      </div>
+      {loading ? (
+        <div className="gold-rates-loading" role="status">
+          <span className="loading-spinner" aria-hidden="true" />
+          {locale === "vi" ? "Đang tải giá vàng…" : "Loading gold prices…"}
+        </div>
+      ) : failed && !rates.length ? (
+        <p className="gold-rates-error" role="alert">
+          {t.goldUnavailable}{" "}
+          <button className="text-button" onClick={() => setReload((value) => value + 1)}>
+            {t.retry}
+          </button>
+        </p>
+      ) : (
+        <>
+          <div className="gold-rates-grid">
+            {rates.map((rate) => (
+              <article className="gold-rate" key={rate.code}>
+                <p className="gold-rate-name">{rate.name}</p>
+                <p className="gold-rate-unit">{rate.unit}</p>
+                <dl>
+                  <div>
+                    <dt>{t.goldBuy}</dt>
+                    <dd>{goldPrice(rate.buy_price)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t.goldSell}</dt>
+                    <dd>{goldPrice(rate.sell_price)}</dd>
+                  </div>
+                </dl>
+                {rate.trend !== "neutral" && rate.trend_value && (
+                  <p className={`gold-rate-trend ${rate.trend}`}>
+                    {rate.trend === "up"
+                      ? locale === "vi"
+                        ? "Tăng"
+                        : "Up"
+                      : locale === "vi"
+                        ? "Giảm"
+                        : "Down"}{" "}
+                    {rate.trend_value.replace(/^-/, "")} ₫
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+          <p className="gold-rates-meta">
+            {updated && <span>{t.goldUpdated}: {goldTime(updated)}</span>}
+            <span>{t.goldDisclaimer}</span>
+          </p>
+        </>
+      )}
+    </section>
   );
 }
 function Card({
@@ -867,6 +990,7 @@ function Home({
           categories={cats}
         />
       )}
+      {!saved && <GoldRates locale={locale} />}
       {loading ? (
         <p className="state" role="status">
           {t.loading}

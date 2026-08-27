@@ -150,6 +150,10 @@ AI_TRANSLATE_LANGUAGE=Vietnamese
 
 `AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu và tạo bản tin nổi bật theo lịch. `AI_TRANSLATE_ENABLED` điều khiển worker dịch tuần tự cho các bài RSS mới, cũng mặc định là `false`; hiện worker hỗ trợ `AI_TRANSLATE_LANGUAGE=Vietnamese`. Các thao tác AI thủ công vẫn hoạt động khi các biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
 
+## Giá vàng tham khảo
+
+Trang chủ hiển thị giá mua/bán tham khảo từ Bảo Tín Mạnh Hải, tải qua backend tại `/api/gold-rates` và cache trong 1 phút. Có thể đổi endpoint GraphQL qua `GOLD_RATES_URL`; ứng dụng giữ nguyên kiểm tra chứng chỉ TLS của nguồn.
+
 ## Tạo bản tin nổi bật thủ công
 
 Khi `AI_URL` và `AI_KEY` đã được cấu hình, tạo ngay một bản tin nổi bật từ các bài đủ điều kiện trong cửa sổ `FEATURED_BRIEF_WINDOW`:
