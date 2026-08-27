@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -86,7 +87,7 @@ type aiConfigRequest struct {
 
 func decodeAIConfigRequest(r *http.Request) (aiConfigRequest, error) {
 	var input aiConfigRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10))
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
 	err := decoder.Decode(&input)
 	input.BaseURL = strings.TrimSpace(input.BaseURL)
 	input.APIKey = strings.TrimSpace(input.APIKey)
@@ -118,10 +119,10 @@ func (s *server) effectiveAISettings(input aiConfigRequest) (aiSettings, error) 
 func (s *server) adminAIConfig(w http.ResponseWriter, _ *http.Request) {
 	settings, source := s.currentAISettings()
 	jsonOut(w, http.StatusOK, map[string]any{
-		"base_url": settings.BaseURL,
-		"model": settings.Model,
+		"base_url":           settings.BaseURL,
+		"model":              settings.Model,
 		"api_key_configured": settings.APIKey != "",
-		"source": source,
+		"source":             source,
 	})
 }
 

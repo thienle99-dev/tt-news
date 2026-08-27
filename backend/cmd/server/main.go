@@ -755,8 +755,12 @@ func (s *server) savedOrganization(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, savedOrganization{Folders: folders, Tags: tags})
 }
 
-func (s *server) createSavedFolder(w http.ResponseWriter, r *http.Request) { s.createSavedCollection(w, r, "saved_folders") }
-func (s *server) createSavedTag(w http.ResponseWriter, r *http.Request)    { s.createSavedCollection(w, r, "saved_tags") }
+func (s *server) createSavedFolder(w http.ResponseWriter, r *http.Request) {
+	s.createSavedCollection(w, r, "saved_folders")
+}
+func (s *server) createSavedTag(w http.ResponseWriter, r *http.Request) {
+	s.createSavedCollection(w, r, "saved_tags")
+}
 
 func (s *server) createSavedCollection(w http.ResponseWriter, r *http.Request, table string) {
 	var body collectionNameRequest
@@ -782,8 +786,12 @@ func (s *server) createSavedCollection(w http.ResponseWriter, r *http.Request, t
 	jsonOut(w, 201, savedCollection{ID: id, Name: body.Name})
 }
 
-func (s *server) deleteSavedFolder(w http.ResponseWriter, r *http.Request) { s.deleteSavedCollection(w, r, "saved_folders") }
-func (s *server) deleteSavedTag(w http.ResponseWriter, r *http.Request)    { s.deleteSavedCollection(w, r, "saved_tags") }
+func (s *server) deleteSavedFolder(w http.ResponseWriter, r *http.Request) {
+	s.deleteSavedCollection(w, r, "saved_folders")
+}
+func (s *server) deleteSavedTag(w http.ResponseWriter, r *http.Request) {
+	s.deleteSavedCollection(w, r, "saved_tags")
+}
 
 func (s *server) deleteSavedCollection(w http.ResponseWriter, r *http.Request, table string) {
 	result, err := s.db.ExecContext(r.Context(), "DELETE FROM "+table+" WHERE id=? AND user_id=?", chi.URLParam(r, "id"), currentUser(r).ID)

@@ -152,18 +152,21 @@ Có thể kết hợp filter nguồn và ngày, ví dụ: `docker compose run --
 docker compose run --rm --no-deps news-app /app/news translate-all-vi
 ```
 
-AI chỉ được cấu hình qua `.env`, không có API/UI để đọc hoặc sửa key:
+AI mặc định lấy từ `.env`:
 
 ```env
-AI_URL=https://api.openai.com/v1/chat/completions
+AI_URL=https://api.openai.com
 AI_KEY=your-server-side-api-key
 AI_MODEL=gpt-4o-mini
+ADMIN_TOKEN=use-a-long-random-secret
 AI_BACKGROUND_SCANNING=false
 AI_TRANSLATE_ENABLED=false
 AI_TRANSLATE_LANGUAGE=Vietnamese
 ```
 
-`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu và tạo bản tin nổi bật theo lịch. `AI_TRANSLATE_ENABLED` điều khiển worker dịch tuần tự cho các bài RSS mới, cũng mặc định là `false`; hiện worker hỗ trợ `AI_TRANSLATE_LANGUAGE=Vietnamese`. Các thao tác AI thủ công vẫn hoạt động khi các biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+`AI_URL` là base URL, không bao gồm `/v1/chat/completions`. App tự gọi `/v1/models` để lấy model và `/v1/chat/completions` cho các tác vụ AI. Mở `/admin`, nhập `ADMIN_TOKEN` để lấy danh sách model, test model và lưu cấu hình. Khi chưa có bản lưu, app dùng các giá trị từ env; cấu hình lưu trong dashboard được giữ trong SQLite và override env cho tới khi bấm **Dùng lại ENV**. API key không được trả ngược về frontend.
+
+`AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu và tạo bản tin nổi bật theo lịch. `AI_TRANSLATE_ENABLED` điều khiển worker dịch tuần tự cho các bài RSS mới, cũng mặc định là `false`; hiện worker hỗ trợ `AI_TRANSLATE_LANGUAGE=Vietnamese`. Các thao tác AI thủ công vẫn hoạt động khi các biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
 
 ## Giá vàng tham khảo
 

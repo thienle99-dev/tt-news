@@ -138,9 +138,9 @@ func (c Client) Test(ctx context.Context) (string, error) {
 		return "", err
 	}
 	payload := map[string]any{
-		"model": c.Model,
+		"model":    c.Model,
 		"messages": []map[string]string{{"role": "user", "content": "Reply with OK."}},
-		"stream": false,
+		"stream":   false,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -292,7 +292,7 @@ func (c Client) Summarize(ctx context.Context, title, body string) (Fields, erro
 	if len(body) > 12000 {
 		body = body[:12000]
 	}
-instruction := `You are a meticulous Vietnamese news editor. Create an original, self-contained, factual brief in natural Vietnamese from the supplied full article, not merely from its headline. Write both the title and every summary bullet in Vietnamese regardless of the source language; preserve proper names, official product names, and source-language quotations when translating them would reduce accuracy.
+	instruction := `You are a meticulous Vietnamese news editor. Create an original, self-contained, factual brief in natural Vietnamese from the supplied full article, not merely from its headline. Write both the title and every summary bullet in Vietnamese regardless of the source language; preserve proper names, official product names, and source-language quotations when translating them would reduce accuracy.
 
 Work silently in two passes. First build a fact inventory from the source: the central event or announcement; the people, organizations, and products involved; date and location; price and availability; specifications, measurements, materials, performance figures, and test conditions; notable features; practical benefits or consequences; comparisons, limitations, and what happens next. Then select and organize the facts that let a reader understand the article without opening the source.
 

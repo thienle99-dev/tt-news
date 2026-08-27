@@ -4,6 +4,8 @@ import "./featured.css";
 import { FilterControls } from "./filter-controls";
 import type {
   Article,
+  AIConfigInput,
+  AIModel,
   Category,
   Country,
   FeaturedBrief,
@@ -1470,12 +1472,72 @@ type AdminStatus = Awaited<ReturnType<typeof api.adminStatus>>;
 function AdminPage() {
   const [token, setToken] = useState(() => sessionStorage.getItem("admin-token") || "");
   const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [aiForm, setAIForm] = useState<AIConfigInput>({ base_url: "", api_key: "", model: "" });
+  const [apiKeyConfigured, setAPIKeyConfigured] = useState(false);
+  const [configSource, setConfigSource] = useState<"env" | "saved">("env");
+  const [models, setModels] = useState<AIModel[]>([]);
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const load = async () => {
-    try { const next = await api.adminStatus(token); sessionStorage.setItem("admin-token", token); setStatus(next); setError(""); } catch { setError("Không thể tải dữ liệu hoặc token quản trị không hợp lệ."); }
+    setBusy("load");
+    try {
+      const [next, aiConfig] = await Promise.all([api.adminStatus(token), api.adminAIConfig(token)]);
+      sessionStorage.setItem("admin-token", token);
+      setStatus(next);
+      setAIForm({ base_url: aiConfig.base_url, api_key: "", model: aiConfig.model });
+      setAPIKeyConfigured(aiConfig.api_key_configured);
+      setConfigSource(aiConfig.source);
+      setError("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể tải dữ liệu hoặc token quản trị không hợp lệ.");
+    } finally {
+      setBusy("");
+    }
   };
-  const action = async (work: () => Promise<unknown>) => { try { await work(); await load(); } catch { setError("Thao tác không thành công."); } };
-  return <main><div className="app-shell"><section className="page settings"><h1>Vận hành</h1><label className="filter-field"><span>ADMIN TOKEN</span><input type="password" value={token} onChange={event => setToken(event.target.value)} /></label><button className="primary" onClick={() => void load()}>Tải dashboard</button>{error && <p className="state error">{error}</p>}{status && <><section className="settings-card"><small>RSS & AI</small><p>Hàng đợi dịch: {status.translation_queue}</p><p>Model: {status.ai.model} · {status.ai.configured ? "đã cấu hình" : "chưa cấu hình"}</p><p>Dịch: {status.ai.translations_generated} · Featured: {status.ai.featured_briefs} · Phản hồi: {status.ai.feedback}</p><p>{status.ai.cost_tracking}</p><button className="text-button" onClick={() => void action(() => api.adminFetchRSS(token))}>Chạy RSS ngay</button><button className="text-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button></section><section className="settings-card"><small>NGUỒN TIN</small>{status.sources.map(source => <div key={source.id}><p><strong>{source.name}</strong> · {source.enabled ? "đang bật" : "đang tắt"}</p><p>{source.last_error || source.last_success_at || "Chưa có lượt chạy"} · mới: {source.last_inserted}</p><button className="text-button" onClick={() => void action(() => api.adminUpdateSource(token, source.id, !source.enabled))}>{source.enabled ? "Tắt nguồn" : "Bật nguồn"}</button></div>)}</section></>}</section></div></main>;
+  const action = async (work: () => Promise<unknown>) => {
+    try { await work(); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Thao tác không thành công."); }
+  };
+  const loadModels = async () => {
+    setBusy("models"); setError(""); setMessage("");
+    try {
+      const next = await api.adminAIModels(token, aiForm);
+      setModels(next);
+      setMessage(`Đã tải ${next.length} model từ /v1/models.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể tải danh sách model."); }
+    finally { setBusy(""); }
+  };
+  const testModel = async () => {
+    setBusy("test"); setError(""); setMessage("");
+    try {
+      const result = await api.adminAITest(token, aiForm);
+      setMessage(`Model hoạt động. Phản hồi: ${result.reply || "OK"}`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Model không hoạt động."); }
+    finally { setBusy(""); }
+  };
+  const saveAI = async () => {
+    setBusy("save"); setError(""); setMessage("");
+    try {
+      const saved = await api.adminAISave(token, aiForm);
+      setAIForm({ base_url: saved.base_url, api_key: "", model: saved.model });
+      setAPIKeyConfigured(saved.api_key_configured); setConfigSource(saved.source);
+      setMessage("Đã lưu cấu hình AI và áp dụng ngay.");
+      await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể lưu cấu hình AI."); }
+    finally { setBusy(""); }
+  };
+  const resetAI = async () => {
+    setBusy("reset"); setError(""); setMessage("");
+    try {
+      const saved = await api.adminAIReset(token);
+      setAIForm({ base_url: saved.base_url, api_key: "", model: saved.model });
+      setAPIKeyConfigured(saved.api_key_configured); setConfigSource(saved.source); setModels([]);
+      setMessage("Đã xoá cấu hình đã lưu và quay lại giá trị từ env.");
+      await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể khôi phục cấu hình env."); }
+    finally { setBusy(""); }
+  };
+  return <main><div className="app-shell"><section className="page settings admin-page"><h1>Vận hành</h1><div className="admin-login"><label className="admin-field"><span>ADMIN TOKEN</span><input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" /></label><button className="primary" disabled={!token || busy === "load"} onClick={() => void load()}>{busy === "load" ? "Đang tải…" : "Tải dashboard"}</button></div>{error && <p className="state error" role="alert">{error}</p>}{message && <p className="state success" role="status">{message}</p>}{status && <><section className="settings-card ai-config-card"><div className="admin-section-heading"><div><small>CẤU HÌNH AI</small><p>Nguồn hiện tại: <strong>{configSource === "env" ? "ENV mặc định" : "Đã lưu"}</strong></p></div><span className={`config-badge ${apiKeyConfigured ? "configured" : ""}`}>{apiKeyConfigured ? "Có API key" : "Chưa có API key"}</span></div><label className="admin-field"><span>AI BASE URL</span><input type="url" value={aiForm.base_url} onChange={event => setAIForm(current => ({ ...current, base_url: event.target.value }))} placeholder="https://api.openai.com" /></label><label className="admin-field"><span>API KEY</span><input type="password" value={aiForm.api_key} onChange={event => setAIForm(current => ({ ...current, api_key: event.target.value }))} placeholder={apiKeyConfigured ? "Để trống để giữ key hiện tại" : "Nhập API key"} autoComplete="new-password" /></label><div className="model-row"><label className="admin-field"><span>MODEL</span><input list="ai-model-list" value={aiForm.model} onChange={event => setAIForm(current => ({ ...current, model: event.target.value }))} placeholder="Chọn hoặc nhập model" /><datalist id="ai-model-list">{models.map(model => <option value={model.id} key={model.id}>{model.owned_by}</option>)}</datalist></label><button className="secondary-button" disabled={busy !== "" || !aiForm.base_url} onClick={() => void loadModels()}>{busy === "models" ? "Đang lấy…" : "Lấy models"}</button></div>{models.length > 0 && <p className="admin-hint">Có {models.length} model. Chọn trong ô Model rồi bấm Test.</p>}<div className="admin-actions"><button className="secondary-button" disabled={busy !== "" || !aiForm.model} onClick={() => void testModel()}>{busy === "test" ? "Đang test…" : "Test model"}</button><button className="primary" disabled={busy !== "" || !aiForm.base_url || !aiForm.model} onClick={() => void saveAI()}>{busy === "save" ? "Đang lưu…" : "Lưu cấu hình"}</button><button className="text-button" disabled={busy !== "" || configSource === "env"} onClick={() => void resetAI()}>Dùng lại ENV</button></div></section><section className="settings-card"><small>RSS & AI</small><p>Hàng đợi dịch: {status.translation_queue}</p><p>Model: {status.ai.model} · {status.ai.configured ? "đã cấu hình" : "chưa cấu hình"}</p><p>Dịch: {status.ai.translations_generated} · Featured: {status.ai.featured_briefs} · Phản hồi: {status.ai.feedback}</p><p>{status.ai.cost_tracking}</p><button className="text-button" onClick={() => void action(() => api.adminFetchRSS(token))}>Chạy RSS ngay</button><button className="text-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button></section><section className="settings-card"><small>NGUỒN TIN</small>{status.sources.map(source => <div key={source.id}><p><strong>{source.name}</strong> · {source.enabled ? "đang bật" : "đang tắt"}</p><p>{source.last_error || source.last_success_at || "Chưa có lượt chạy"} · mới: {source.last_inserted}</p><button className="text-button" onClick={() => void action(() => api.adminUpdateSource(token, source.id, !source.enabled))}>{source.enabled ? "Tắt nguồn" : "Bật nguồn"}</button></div>)}</section></>}</section></div></main>;
 }
 export default function App() {
   if (window.location.pathname === "/admin") return <AdminPage />;
