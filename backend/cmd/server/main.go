@@ -224,6 +224,7 @@ func (s *server) routes() http.Handler {
 		r.Use(s.requireAdmin)
 		r.Get("/status", s.adminStatus)
 		r.Post("/rss/fetch", s.adminFetchRSS)
+		r.Post("/translations/enqueue", s.adminEnqueueTranslations)
 		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
 		r.Patch("/sources/{id}", s.adminUpdateSource)
 		r.Get("/ai/config", s.adminAIConfig)
@@ -1092,11 +1093,23 @@ func (result *rssFetchResult) add(other rssFetchResult) {
 }
 
 func (s *server) fetchSources(ctx context.Context, nameFilter string, since time.Time) {
+	s.fetchSourcesSelected(ctx, nameFilter, nil, since)
+}
+
+func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, sourceIDs []int64, since time.Time) {
 	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business'`
 	args := []any{}
 	if strings.TrimSpace(nameFilter) != "" {
 		query += " AND lower(s.name) LIKE ?"
 		args = append(args, "%"+strings.ToLower(strings.TrimSpace(nameFilter))+"%")
+	}
+	if len(sourceIDs) > 0 {
+		placeholders := make([]string, 0, len(sourceIDs))
+		for _, id := range sourceIDs {
+			placeholders = append(placeholders, "?")
+			args = append(args, id)
+		}
+		query += " AND s.id IN (" + strings.Join(placeholders, ",") + ")"
 	}
 	rows, e := s.db.QueryContext(ctx, query, args...)
 	if e != nil {

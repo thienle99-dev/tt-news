@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -86,8 +89,76 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) adminFetchRSS(w http.ResponseWriter, r *http.Request) {
-	go s.fetchSources(context.Background(), "", time.Time{})
-	jsonOut(w, http.StatusAccepted, map[string]string{"status": "rss fetch started"})
+	sourceIDs, err := adminSourceIDs(r)
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	go s.fetchSourcesSelected(context.Background(), "", sourceIDs, time.Time{})
+	jsonOut(w, http.StatusAccepted, map[string]any{"status": "rss fetch started", "source_count": len(sourceIDs)})
+}
+
+func adminSourceIDs(r *http.Request) ([]int64, error) {
+	var body struct {
+		SourceIDs []int64 `json:"source_ids"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return nil, errors.New("invalid JSON body")
+	}
+	seen := map[int64]bool{}
+	ids := make([]int64, 0, len(body.SourceIDs))
+	for _, id := range body.SourceIDs {
+		if id < 1 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+		if len(ids) > 500 {
+			return nil, errors.New("too many sources selected")
+		}
+	}
+	return ids, nil
+}
+
+func (s *server) adminEnqueueTranslations(w http.ResponseWriter, r *http.Request) {
+	if !s.aiConfigured() {
+		jsonErr(w, http.StatusBadRequest, "AI configuration is required")
+		return
+	}
+	sourceIDs, err := adminSourceIDs(r)
+	if err != nil {
+		jsonErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(sourceIDs) == 0 {
+		jsonErr(w, http.StatusBadRequest, "select at least one source")
+		return
+	}
+	queued, err := s.enqueueSourceTranslations(r.Context(), sourceIDs)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not enqueue translations")
+		return
+	}
+	go s.processTranslationQueue(context.Background())
+	jsonOut(w, http.StatusAccepted, map[string]any{"status": "translations queued", "queued": queued, "source_count": len(sourceIDs)})
+}
+
+func (s *server) enqueueSourceTranslations(ctx context.Context, sourceIDs []int64) (int64, error) {
+	placeholders := make([]string, 0, len(sourceIDs))
+	args := make([]any, 0, len(sourceIDs))
+	for _, id := range sourceIDs {
+		placeholders = append(placeholders, "?")
+		args = append(args, id)
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code)
+		SELECT a.id,'vi' FROM articles a
+		JOIN sources s ON s.id=a.source_id
+		LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code='vi'
+		WHERE s.enabled=1 AND tr.article_id IS NULL AND a.source_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (s *server) adminRegenerateFeatured(w http.ResponseWriter, r *http.Request) {

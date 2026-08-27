@@ -9,7 +9,7 @@
 .filter-input-wrap > .filter-icon,.filter-select-wrap > .filter-icon:first-child,.source-select-trigger > .filter-icon:first-child { margin-left:12px; color:var(--muted); }
 .filter-input-wrap input,.filter-select-wrap select { width:100%; min-width:0; height:44px; padding:0 10px; border:0; outline:0; background:transparent; color:var(--ink); font:14px Roboto,sans-serif; }
 .filter-input-wrap input { padding-left:9px; }
-.filter-select-wrap select { appearance:none; padding-right:30px; cursor:pointer; }
+.filter-select-wrap select { overflow:hidden; appearance:none; padding-right:38px; cursor:pointer; text-overflow:ellipsis; white-space:nowrap; }
 .filter-select-wrap > .filter-icon:last-child,.source-select-trigger > .filter-icon:last-child { position:absolute; right:11px; width:18px; height:18px; color:var(--muted); pointer-events:none; }
 .source-select-trigger { width:100%; padding:0 34px 0 12px; gap:9px; cursor:pointer; text-align:left; }
 .source-select-trigger > span { overflow:hidden; color:var(--ink); font:14px Roboto,sans-serif; letter-spacing:normal; text-overflow:ellipsis; text-transform:none; white-space:nowrap; }

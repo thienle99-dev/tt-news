@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
 import "./featured.css";
-import { FilterControls } from "./filter-controls";
+import { FilterControls, FilterIcon, FilterSelect } from "./filter-controls";
 import type {
   Article,
   AIConfigInput,
@@ -594,6 +594,44 @@ function ThemeToggle({ theme, toggle, locale }: { theme: Theme; toggle: () => vo
     </button>
   );
 }
+const HomeMasthead = memo(function HomeMasthead({
+  saved,
+  history,
+  locale,
+  setLocale,
+  theme,
+  toggleTheme,
+  hideRead,
+  toggleHideRead,
+}: {
+  saved?: boolean;
+  history?: boolean;
+  locale: Locale;
+  setLocale: (locale: Locale) => void;
+  theme: Theme;
+  toggleTheme: () => void;
+  hideRead: boolean;
+  toggleHideRead: () => void;
+}) {
+  const t = text[locale];
+  return (
+    <header className="masthead">
+      <div>
+        <p>{t.masthead}</p>
+        <h1>{history ? t.history : saved ? t.saved : t.news}</h1>
+      </div>
+      <div className="header-actions">
+        <LanguagePicker locale={locale} setLocale={setLocale} />
+        <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
+        {!saved && !history && <button className="text-button" onClick={toggleHideRead}>{hideRead ? t.showRead : t.hideRead}</button>}
+      </div>
+    </header>
+  );
+});
+const FeaturedMasthead = memo(function FeaturedMasthead({ locale, setLocale }: { locale: Locale; setLocale: (locale: Locale) => void }) {
+  const t = text[locale];
+  return <header className="masthead"><div><p>{t.masthead}</p><h1>{t.featuredNews}</h1></div><LanguagePicker locale={locale} setLocale={setLocale} /></header>;
+});
 const goldPrice = (value: number) =>
   new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value);
 const goldTime = (value: string) => value.replace(/\.\d+$/, "");
@@ -981,6 +1019,7 @@ function Home({
   const [savedTag, setSavedTag] = useState("");
   const [savedSort, setSavedSort] = useState("saved_newest");
   const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
+  const toggleHideRead = useCallback(() => setHideRead(value => !value), []);
   const t = text[locale];
   const params = useMemo(
     () =>
@@ -1167,17 +1206,7 @@ function Home({
   ];
   return (
     <section className="page editorial">
-      <header className="masthead">
-        <div>
-          <p>{t.masthead}</p>
-          <h1>{history ? t.history : saved ? t.saved : t.news}</h1>
-        </div>
-        <div className="header-actions">
-          <LanguagePicker locale={locale} setLocale={setLocale} />
-          <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
-          {!saved && !history && <button className="text-button" onClick={() => setHideRead(value => !value)}>{hideRead ? t.showRead : t.hideRead}</button>}
-        </div>
-      </header>
+      <HomeMasthead saved={saved} history={history} locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} hideRead={hideRead} toggleHideRead={toggleHideRead} />
       {!history && (
         <FilterControls
           locale={locale}
@@ -1193,9 +1222,9 @@ function Home({
       {!saved && !history && <GoldRates locale={locale} />}
       {history && <button className="text-button" onClick={clearHistory}>{t.clearHistory}</button>}
       {saved && <section className="filter-controls" aria-label={t.saved}>
-        <label className="filter-field"><span>{t.sortSaved}</span><select value={savedSort} onChange={event => setSavedSort(event.target.value)}><option value="saved_newest">{t.savedNewest}</option><option value="saved_oldest">{t.savedOldest}</option><option value="published_newest">{t.publishedNewest}</option><option value="title">{t.titleSort}</option></select></label>
-        <label className="filter-field"><span>{t.folders}</span><select value={savedFolder} onChange={event => setSavedFolder(event.target.value)}><option value="">{t.all}</option>{savedOrganization.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name} ({folder.count})</option>)}</select></label>
-        <label className="filter-field"><span>{t.tags}</span><select value={savedTag} onChange={event => setSavedTag(event.target.value)}><option value="">{t.all}</option>{savedOrganization.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name} ({tag.count})</option>)}</select></label>
+        <FilterSelect id="saved-sort" className="saved-sort-select" label={t.sortSaved} icon="sort" value={savedSort} onChange={setSavedSort} options={[{ value: "saved_newest", label: t.savedNewest }, { value: "saved_oldest", label: t.savedOldest }, { value: "published_newest", label: t.publishedNewest }, { value: "title", label: t.titleSort }]} />
+        <FilterSelect id="saved-folder" label={t.folders} icon="folder" value={savedFolder} onChange={setSavedFolder} options={[{ value: "", label: t.all }, ...savedOrganization.folders.map(folder => ({ value: String(folder.id), label: `${folder.name} (${folder.count})` }))]} />
+        <FilterSelect id="saved-tag" label={t.tags} icon="tag" value={savedTag} onChange={setSavedTag} options={[{ value: "", label: t.all }, ...savedOrganization.tags.map(tag => ({ value: String(tag.id), label: `${tag.name} (${tag.count})` }))]} />
         <button className="text-button" onClick={() => void addCollection("folder")}>{t.addFolder}</button><button className="text-button" onClick={() => void addCollection("tag")}>{t.addTag}</button>
         {selectedIDs.length > 0 && <><button className="text-button" onClick={() => void removeSelected()}>{t.removeSelected} ({selectedIDs.length})</button><select defaultValue="" onChange={event => { void assignCollection("folder", Number(event.target.value)); event.currentTarget.value = ""; }}><option value="">{t.folders}</option>{savedOrganization.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><select defaultValue="" onChange={event => { void assignCollection("tag", Number(event.target.value)); event.currentTarget.value = ""; }}><option value="">{t.tags}</option>{savedOrganization.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></>}
       </section>}
@@ -1342,13 +1371,7 @@ function Featured({
   };
   return (
     <section className="page featured-page">
-      <header className="masthead">
-        <div>
-          <p>{t.masthead}</p>
-          <h1>{t.featuredNews}</h1>
-        </div>
-        <LanguagePicker locale={locale} setLocale={setLocale} />
-      </header>
+      <FeaturedMasthead locale={locale} setLocale={setLocale} />
       {loading ? (
         <p className="state" role="status">
           {t.loading}
@@ -1468,7 +1491,235 @@ function Settings({
     </section>
   );
 }
+const BottomNavigation = memo(function BottomNavigation({
+  tab,
+  locale,
+  onSelect,
+}: {
+  tab: Tab;
+  locale: Locale;
+  onSelect: (tab: Tab) => void;
+}) {
+  const t = text[locale];
+  const navItems: [Tab, Parameters<typeof Icon>[0]["name"], string][] = [
+    ["home", "home", t.home],
+    ["featured", "sparkles", t.featuredNews],
+    ["saved", "bookmark", t.saved],
+    ["history", "history", t.history],
+    ["settings", "settings", t.settings],
+  ];
+  return (
+    <nav aria-label="Primary navigation">
+      {navItems.map(([id, icon, label]) => (
+        <button
+          className={tab === id ? "nav-active" : ""}
+          aria-current={tab === id ? "page" : undefined}
+          aria-label={label}
+          onClick={() => onSelect(id)}
+          key={id}
+        >
+          <Icon name={icon} filled={id === "saved" && tab === id} />
+          <span className="nav-label">{label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+});
 type AdminStatus = Awaited<ReturnType<typeof api.adminStatus>>;
+type AdminSource = AdminStatus["sources"][number];
+
+function formatAdminTime(value: string) {
+  if (!value) return "Chưa có";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function AdminSources({
+  sources,
+  token,
+  action,
+}: {
+  sources: AdminSource[];
+  token: string;
+  action: (work: () => Promise<unknown>) => Promise<boolean>;
+}) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "enabled" | "issues" | "disabled">("all");
+  const [updatingID, setUpdatingID] = useState<number | null>(null);
+  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
+  const [operation, setOperation] = useState("");
+  const [operationMessage, setOperationMessage] = useState("");
+  const counts = {
+    all: sources.length,
+    enabled: sources.filter(source => source.enabled).length,
+    issues: sources.filter(source => source.enabled && source.last_error).length,
+    disabled: sources.filter(source => !source.enabled).length,
+  };
+  const normalizedQuery = query.trim().toLocaleLowerCase("vi");
+  const visibleSources = sources.filter(source => {
+    const matchesQuery = !normalizedQuery || source.name.toLocaleLowerCase("vi").includes(normalizedQuery);
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "enabled" && source.enabled) ||
+      (filter === "issues" && source.enabled && Boolean(source.last_error)) ||
+      (filter === "disabled" && !source.enabled);
+    return matchesQuery && matchesFilter;
+  });
+  const toggleSource = async (source: AdminSource) => {
+    setUpdatingID(source.id);
+    if (source.enabled) setSelectedIDs(current => current.filter(id => id !== source.id));
+    try {
+      await action(() => api.adminUpdateSource(token, source.id, !source.enabled));
+    } finally {
+      setUpdatingID(null);
+    }
+  };
+  const toggleSelected = (sourceID: number) => {
+    setSelectedIDs(current => current.includes(sourceID) ? current.filter(id => id !== sourceID) : [...current, sourceID]);
+  };
+  const selectableIDs = visibleSources.filter(source => source.enabled).map(source => source.id);
+  const allVisibleSelected = selectableIDs.length > 0 && selectableIDs.every(id => selectedIDs.includes(id));
+  const toggleAllVisible = () => {
+    setSelectedIDs(current => allVisibleSelected
+      ? current.filter(id => !selectableIDs.includes(id))
+      : [...new Set([...current, ...selectableIDs])]);
+  };
+  const runFetch = async (sourceIDs: number[], key: string) => {
+    setOperation(key);
+    setOperationMessage("");
+    const succeeded = await action(() => api.adminFetchRSS(token, sourceIDs));
+    if (succeeded) setOperationMessage(sourceIDs.length ? `Đã bắt đầu chạy ${sourceIDs.length} nguồn.` : "Đã bắt đầu chạy tất cả nguồn đang bật.");
+    setOperation("");
+  };
+  const runTranslation = async () => {
+    setOperation("translate");
+    setOperationMessage("");
+    let queued = 0;
+    const succeeded = await action(async () => {
+      const response = await api.adminEnqueueTranslations(token, selectedIDs);
+      queued = response.queued;
+      return response;
+    });
+    if (succeeded) setOperationMessage(`Đã xếp ${queued} bài vào hàng đợi dịch từ ${selectedIDs.length} nguồn.`);
+    setOperation("");
+  };
+  const filters = [
+    { id: "all" as const, label: "Tất cả", value: counts.all },
+    { id: "enabled" as const, label: "Đang bật", value: counts.enabled },
+    { id: "issues" as const, label: "Có lỗi", value: counts.issues },
+    { id: "disabled" as const, label: "Đã tắt", value: counts.disabled },
+  ];
+  return (
+    <section className="settings-card admin-sources" aria-labelledby="admin-sources-title">
+      <div className="source-section-heading">
+        <div>
+          <small>HỆ THỐNG PHÂN PHỐI</small>
+          <h2 id="admin-sources-title">Nguồn tin</h2>
+          <p>Theo dõi trạng thái crawler và kiểm soát nguồn đang xuất hiện trong feed.</p>
+        </div>
+        <span className="source-total">{counts.enabled}/{counts.all} hoạt động</span>
+      </div>
+      <div className="source-stats" aria-label="Lọc nguồn theo trạng thái">
+        {filters.map(item => (
+          <button
+            type="button"
+            className={filter === item.id ? `source-stat ${item.id} selected` : `source-stat ${item.id}`}
+            aria-pressed={filter === item.id}
+            onClick={() => setFilter(item.id)}
+            key={item.id}
+          >
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </div>
+      <label className="source-admin-search" htmlFor="admin-source-search">
+        <span className="sr-only">Tìm nguồn tin</span>
+        <FilterIcon name="search" />
+        <input
+          id="admin-source-search"
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder="Tìm theo tên nguồn…"
+          autoComplete="off"
+        />
+        <span className="source-result-count" aria-live="polite">{visibleSources.length} kết quả</span>
+      </label>
+      <div className="source-bulk-bar">
+        <label className="source-select-all">
+          <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} />
+          <span>Chọn nguồn đang hiển thị</span>
+        </label>
+        <div className="source-bulk-actions">
+          <button type="button" className="secondary-button" disabled={Boolean(operation)} onClick={() => void runFetch([], "all")}>{operation === "all" ? "Đang chạy…" : "Chạy tất cả"}</button>
+          <button type="button" className="secondary-button" disabled={Boolean(operation) || !selectedIDs.length} onClick={() => void runFetch(selectedIDs, "selected")}>{operation === "selected" ? "Đang chạy…" : `Chạy đã chọn (${selectedIDs.length})`}</button>
+          <button type="button" className="primary" disabled={Boolean(operation) || !selectedIDs.length} onClick={() => void runTranslation()}>{operation === "translate" ? "Đang xếp hàng…" : `Dịch hàng loạt (${selectedIDs.length})`}</button>
+        </div>
+      </div>
+      {operationMessage && <p className="source-operation-message" role="status">{operationMessage}</p>}
+      <div className="admin-source-list">
+        {visibleSources.map(source => {
+          const health = !source.enabled ? "disabled" : source.last_error ? "issue" : source.last_success_at ? "healthy" : "pending";
+          const healthLabel = health === "healthy" ? "Ổn định" : health === "issue" ? "Có lỗi" : health === "disabled" ? "Đã tắt" : "Chờ dữ liệu";
+          return (
+            <article className={`admin-source-card ${health}${selectedIDs.includes(source.id) ? " selected" : ""}`} key={source.id}>
+              <div className="source-card-heading">
+                <div className="source-identity">
+                  <label className="source-checkbox">
+                    <input type="checkbox" checked={selectedIDs.includes(source.id)} disabled={!source.enabled} onChange={() => toggleSelected(source.id)} />
+                    <span className="sr-only">Chọn nguồn {source.name}</span>
+                  </label>
+                  <span className="source-health-dot" aria-hidden="true" />
+                  <div>
+                    <h3>{source.name}</h3>
+                    <span className={`source-health-label ${health}`}>{healthLabel}</span>
+                  </div>
+                </div>
+                <div className="source-row-actions">
+                  <button type="button" className="source-run-button" disabled={!source.enabled || Boolean(operation)} onClick={() => void runFetch([source.id], `source-${source.id}`)}>{operation === `source-${source.id}` ? "Đang chạy…" : "Chạy ngay"}</button>
+                  <button
+                    type="button"
+                    className={source.enabled ? "source-toggle enabled" : "source-toggle"}
+                    disabled={updatingID === source.id}
+                    aria-label={`${source.enabled ? "Tắt" : "Bật"} nguồn ${source.name}`}
+                    onClick={() => void toggleSource(source)}
+                  >
+                    {updatingID === source.id ? "Đang lưu…" : source.enabled ? "Tắt nguồn" : "Bật nguồn"}
+                  </button>
+                </div>
+              </div>
+              <dl className="source-metrics">
+                <div><dt>Thành công gần nhất</dt><dd>{formatAdminTime(source.last_success_at)}</dd></div>
+                <div><dt>Lần fetch cuối</dt><dd>{formatAdminTime(source.last_fetch_at)}</dd></div>
+                <div><dt>Bài mới</dt><dd>{source.last_inserted}</dd></div>
+              </dl>
+              {source.last_error && (
+                <div className="source-error" role="status">
+                  <strong>Lỗi gần nhất</strong>
+                  <p>{source.last_error}</p>
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {!visibleSources.length && (
+          <div className="source-empty">
+            <strong>Không tìm thấy nguồn phù hợp</strong>
+            <p>Thử đổi từ khoá hoặc chọn trạng thái khác.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function AdminPage() {
   const [token, setToken] = useState(() => sessionStorage.getItem("admin-token") || "");
   const [status, setStatus] = useState<AdminStatus | null>(null);
@@ -1496,13 +1747,26 @@ function AdminPage() {
     }
   };
   const action = async (work: () => Promise<unknown>) => {
-    try { await work(); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Thao tác không thành công."); }
+    try {
+      await work();
+      await load();
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Thao tác không thành công.");
+      return false;
+    }
   };
   const loadModels = async () => {
     setBusy("models"); setError(""); setMessage("");
     try {
       const next = await api.adminAIModels(token, aiForm);
       setModels(next);
+      setAIForm(current => ({
+        ...current,
+        model: next.some(model => model.id === current.model)
+          ? current.model
+          : next[0]?.id || current.model,
+      }));
       setMessage(`Đã tải ${next.length} model từ /v1/models.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể tải danh sách model."); }
     finally { setBusy(""); }
@@ -1537,7 +1801,88 @@ function AdminPage() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể khôi phục cấu hình env."); }
     finally { setBusy(""); }
   };
-  return <main><div className="app-shell"><section className="page settings admin-page"><h1>Vận hành</h1><div className="admin-login"><label className="admin-field"><span>ADMIN TOKEN</span><input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" /></label><button className="primary" disabled={!token || busy === "load"} onClick={() => void load()}>{busy === "load" ? "Đang tải…" : "Tải dashboard"}</button></div>{error && <p className="state error" role="alert">{error}</p>}{message && <p className="state success" role="status">{message}</p>}{status && <><section className="settings-card ai-config-card"><div className="admin-section-heading"><div><small>CẤU HÌNH AI</small><p>Nguồn hiện tại: <strong>{configSource === "env" ? "ENV mặc định" : "Đã lưu"}</strong></p></div><span className={`config-badge ${apiKeyConfigured ? "configured" : ""}`}>{apiKeyConfigured ? "Có API key" : "Chưa có API key"}</span></div><label className="admin-field"><span>AI BASE URL</span><input type="url" value={aiForm.base_url} onChange={event => setAIForm(current => ({ ...current, base_url: event.target.value }))} placeholder="https://api.openai.com" /></label><label className="admin-field"><span>API KEY</span><input type="password" value={aiForm.api_key} onChange={event => setAIForm(current => ({ ...current, api_key: event.target.value }))} placeholder={apiKeyConfigured ? "Để trống để giữ key hiện tại" : "Nhập API key"} autoComplete="new-password" /></label><div className="model-row"><label className="admin-field"><span>MODEL</span><input list="ai-model-list" value={aiForm.model} onChange={event => setAIForm(current => ({ ...current, model: event.target.value }))} placeholder="Chọn hoặc nhập model" /><datalist id="ai-model-list">{models.map(model => <option value={model.id} key={model.id}>{model.owned_by}</option>)}</datalist></label><button className="secondary-button" disabled={busy !== "" || !aiForm.base_url} onClick={() => void loadModels()}>{busy === "models" ? "Đang lấy…" : "Lấy models"}</button></div>{models.length > 0 && <p className="admin-hint">Có {models.length} model. Chọn trong ô Model rồi bấm Test.</p>}<div className="admin-actions"><button className="secondary-button" disabled={busy !== "" || !aiForm.model} onClick={() => void testModel()}>{busy === "test" ? "Đang test…" : "Test model"}</button><button className="primary" disabled={busy !== "" || !aiForm.base_url || !aiForm.model} onClick={() => void saveAI()}>{busy === "save" ? "Đang lưu…" : "Lưu cấu hình"}</button><button className="text-button" disabled={busy !== "" || configSource === "env"} onClick={() => void resetAI()}>Dùng lại ENV</button></div></section><section className="settings-card"><small>RSS & AI</small><p>Hàng đợi dịch: {status.translation_queue}</p><p>Model: {status.ai.model} · {status.ai.configured ? "đã cấu hình" : "chưa cấu hình"}</p><p>Dịch: {status.ai.translations_generated} · Featured: {status.ai.featured_briefs} · Phản hồi: {status.ai.feedback}</p><p>{status.ai.cost_tracking}</p><button className="text-button" onClick={() => void action(() => api.adminFetchRSS(token))}>Chạy RSS ngay</button><button className="text-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button></section><section className="settings-card"><small>NGUỒN TIN</small>{status.sources.map(source => <div key={source.id}><p><strong>{source.name}</strong> · {source.enabled ? "đang bật" : "đang tắt"}</p><p>{source.last_error || source.last_success_at || "Chưa có lượt chạy"} · mới: {source.last_inserted}</p><button className="text-button" onClick={() => void action(() => api.adminUpdateSource(token, source.id, !source.enabled))}>{source.enabled ? "Tắt nguồn" : "Bật nguồn"}</button></div>)}</section></>}</section></div></main>;
+  return (
+    <main>
+      <div className="app-shell">
+        <section className="page settings admin-page">
+          <h1>Vận hành</h1>
+          <div className="admin-login">
+            <label className="admin-field">
+              <span>ADMIN TOKEN</span>
+              <input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" />
+            </label>
+            <button className="primary" disabled={!token || busy === "load"} onClick={() => void load()}>
+              {busy === "load" ? "Đang tải…" : "Tải dashboard"}
+            </button>
+          </div>
+          {error && <p className="state error" role="alert">{error}</p>}
+          {message && <p className="state success" role="status">{message}</p>}
+          {status && (
+            <>
+              <section className="settings-card ai-config-card" aria-labelledby="ai-config-title">
+                <div className="admin-panel-heading">
+                  <div>
+                    <small>CẤU HÌNH AI</small>
+                    <h2 id="ai-config-title">Kết nối nhà cung cấp AI</h2>
+                    <p>Chọn endpoint, xác thực và model dùng để dịch và tạo bản tin nổi bật.</p>
+                  </div>
+                  <div className="config-statuses" aria-label="Trạng thái cấu hình AI">
+                    <span className="config-badge">{configSource === "env" ? "Theo ENV" : "Đã lưu"}</span>
+                    <span className={`config-badge ${apiKeyConfigured ? "configured" : ""}`}>{apiKeyConfigured ? "API key sẵn sàng" : "Thiếu API key"}</span>
+                  </div>
+                </div>
+                <form className="ai-config-form" onSubmit={event => { event.preventDefault(); void saveAI(); }}>
+                  <div className="ai-form-grid">
+                    <label className="admin-field ai-base-url"><span>AI BASE URL</span><input type="url" value={aiForm.base_url} onChange={event => setAIForm(current => ({ ...current, base_url: event.target.value }))} placeholder="https://api.openai.com" /></label>
+                    <label className="admin-field"><span>API KEY</span><input type="password" value={aiForm.api_key} onChange={event => setAIForm(current => ({ ...current, api_key: event.target.value }))} placeholder={apiKeyConfigured ? "Để trống để giữ key hiện tại" : "Nhập API key"} autoComplete="new-password" /></label>
+                    <div className="model-row">
+                      <label className="admin-field">
+                        <span>MODEL</span>
+                        <select value={aiForm.model} onChange={event => setAIForm(current => ({ ...current, model: event.target.value }))} aria-describedby="ai-model-help">
+                          <option value="" disabled>Bấm “Lấy models” để tải danh sách</option>
+                          {aiForm.model && !models.some(model => model.id === aiForm.model) && <option value={aiForm.model}>{aiForm.model} (hiện tại)</option>}
+                          {models.map(model => <option value={model.id} key={model.id}>{model.id}{model.owned_by ? ` · ${model.owned_by}` : ""}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" className="secondary-button" disabled={busy !== "" || !aiForm.base_url} onClick={() => void loadModels()}>{busy === "models" ? "Đang lấy…" : "Lấy models"}</button>
+                    </div>
+                  </div>
+                  <p className="admin-hint" id="ai-model-help">{models.length > 0 ? `Đã tìm thấy ${models.length} model. Chọn một model rồi kiểm tra kết nối trước khi lưu.` : "Danh sách model được lấy trực tiếp từ endpoint /v1/models của provider."}</p>
+                  <div className="admin-actions">
+                    <button type="button" className="secondary-button" disabled={busy !== "" || !aiForm.model} onClick={() => void testModel()}>{busy === "test" ? "Đang kiểm tra…" : "Test model"}</button>
+                    <button type="submit" className="primary" disabled={busy !== "" || !aiForm.base_url || !aiForm.model}>{busy === "save" ? "Đang lưu…" : "Lưu cấu hình"}</button>
+                    <button type="button" className="text-button" disabled={busy !== "" || configSource === "env"} onClick={() => void resetAI()}>Khôi phục ENV</button>
+                  </div>
+                </form>
+              </section>
+              <section className="settings-card operations-card" aria-labelledby="operations-title">
+                <div className="admin-panel-heading operations-heading">
+                  <div>
+                    <small>RSS & AI</small>
+                    <h2 id="operations-title">Tình trạng vận hành</h2>
+                    <p>Theo dõi hàng đợi xử lý và đầu ra của hệ thống tự động.</p>
+                  </div>
+                  <span className={`config-badge ${status.ai.configured ? "configured" : ""}`}>{status.ai.configured ? "AI đang sẵn sàng" : "AI chưa sẵn sàng"}</span>
+                </div>
+                <dl className="operations-metrics">
+                  <div><dt>Hàng đợi dịch</dt><dd>{status.translation_queue}</dd><small>Bài đang chờ xử lý</small></div>
+                  <div><dt>Bản dịch</dt><dd>{status.ai.translations_generated}</dd><small>Đã tạo</small></div>
+                  <div><dt>Featured brief</dt><dd>{status.ai.featured_briefs}</dd><small>Đã tạo</small></div>
+                  <div><dt>Phản hồi</dt><dd>{status.ai.feedback}</dd><small>Từ độc giả</small></div>
+                </dl>
+                <div className="operations-footer">
+                  <p><strong>Model đang dùng</strong><span>{status.ai.model || "Chưa chọn model"}</span></p>
+                  <p className="operations-note">{status.ai.cost_tracking}</p>
+                  <button type="button" className="secondary-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button>
+                </div>
+              </section>
+              <AdminSources sources={status.sources} token={token} action={action} />
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }
 export default function App() {
   if (window.location.pathname === "/admin") return <AdminPage />;
@@ -1562,17 +1907,17 @@ export default function App() {
   const [detailError, setDetailError] = useState(false);
   const [detailReload, setDetailReload] = useState(0);
   const listingScroll = useRef(0);
-  const setLocale = (next: Locale) => {
+  const setLocale = useCallback((next: Locale) => {
     localStorage.setItem("locale", next);
     setLocaleState(next);
-  };
+  }, []);
   const t = text[locale];
   const theme = themeOverride ?? automaticTheme;
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
     localStorage.setItem("theme", next);
     setThemeOverride(next);
-  };
+  }, [theme]);
   useEffect(() => {
     const app = window.Telegram?.WebApp;
     const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1634,13 +1979,6 @@ export default function App() {
     requestAnimationFrame(() => window.scrollTo(0, listingScroll.current));
   };
   const showingDetail = articleID !== null;
-  const navItems: [Tab, Parameters<typeof Icon>[0]["name"], string][] = [
-    ["home", "home", t.home],
-    ["featured", "sparkles", t.featuredNews],
-    ["saved", "bookmark", t.saved],
-    ["history", "history", t.history],
-    ["settings", "settings", t.settings],
-  ];
   return (
     <main>
       <a className="skip-link" href="#main-content">
@@ -1713,21 +2051,7 @@ export default function App() {
             </p>
           ))}
       </div>
-      {!showingDetail && (
-        <nav aria-label="Primary navigation">
-          {navItems.map(([id, icon, label]) => (
-            <button
-              className={tab === id ? "nav-active" : ""}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={() => setTab(id)}
-              key={id}
-            >
-              <Icon name={icon} filled={id === "saved" && tab === id} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
-      )}
+      {!showingDetail && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
     </main>
   );
 }

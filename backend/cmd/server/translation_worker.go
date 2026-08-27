@@ -68,3 +68,16 @@ func (s *server) processTranslationJob(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
+
+func (s *server) processTranslationQueue(ctx context.Context) {
+	for ctx.Err() == nil {
+		processed, err := s.processTranslationJob(ctx)
+		if err != nil {
+			log.Printf("manual translation queue: %v", err)
+			return
+		}
+		if !processed {
+			return
+		}
+	}
+}

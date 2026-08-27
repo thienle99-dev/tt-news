@@ -166,6 +166,8 @@ AI_TRANSLATE_LANGUAGE=Vietnamese
 
 `AI_URL` là base URL, không bao gồm `/v1/chat/completions`. App tự gọi `/v1/models` để lấy model và `/v1/chat/completions` cho các tác vụ AI. Mở `/admin`, nhập `ADMIN_TOKEN` để lấy danh sách model, test model và lưu cấu hình. Khi chưa có bản lưu, app dùng các giá trị từ env; cấu hình lưu trong dashboard được giữ trong SQLite và override env cho tới khi bấm **Dùng lại ENV**. API key không được trả ngược về frontend.
 
+Dashboard `/admin` cũng cho phép tìm/lọc và chọn nguồn RSS, chạy một nguồn, chạy nhóm nguồn đã chọn hoặc chạy tất cả nguồn đang bật. Nút **Dịch hàng loạt** đưa các bài chưa có bản dịch tiếng Việt của đúng nhóm nguồn đã chọn vào hàng đợi và bắt đầu xử lý ngay.
+
 `AI_BACKGROUND_SCANNING` mặc định là `false`; đặt thành `true` để bật các worker AI quét bài đã lưu và tạo bản tin nổi bật theo lịch. `AI_TRANSLATE_ENABLED` điều khiển worker dịch tuần tự cho các bài RSS mới, cũng mặc định là `false`; hiện worker hỗ trợ `AI_TRANSLATE_LANGUAGE=Vietnamese`. Các thao tác AI thủ công vẫn hoạt động khi các biến này là `false`. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
 
 ## Giá vàng tham khảo
