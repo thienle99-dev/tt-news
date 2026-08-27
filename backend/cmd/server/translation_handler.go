@@ -36,7 +36,7 @@ func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "could not load article")
 		return
 	}
-	fields, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Vietnamese(r.Context(), translationservice.Fields{Title: article.Title, Description: article.Description, Summary: article.Summary})
+	fields, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Vietnamese(r.Context(), translationservice.Fields{Title: article.Title, Summary: article.Summary})
 	if err != nil {
 		log.Printf("translate article %d: %v", article.ID, err)
 		jsonErr(w, http.StatusServiceUnavailable, "could not translate article")

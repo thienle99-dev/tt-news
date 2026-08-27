@@ -30,6 +30,25 @@
   overflow-wrap: anywhere;
 }
 
+.summary-panel {
+  margin: 18px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.summary-panel p {
+  margin: 8px 0 0;
+  font: 17px/1.45 Georgia, serif;
+}
+
+.article-content > small {
+  display: block;
+  margin-bottom: 10px;
+}
+
 .translation-loading {
   display: flex;
   align-items: center;

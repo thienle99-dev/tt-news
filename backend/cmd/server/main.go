@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mmcdole/gofeed"
+	"telegram-news/internal/articletext"
 	_ "modernc.org/sqlite"
 )
 
@@ -250,7 +251,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
 	if language != "" {
 		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
-		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "COALESCE(NULLIF(tr.description,''),a.description)", "COALESCE(NULLIF(tr.summary,''),a.summary)"
+		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = append(args, language)
 	}
 	where := []string{"1=1"}
@@ -361,7 +362,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	args := []any{u.ID}
 	if language == "vi" {
 		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
-		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "COALESCE(NULLIF(tr.description,''),a.description)", "COALESCE(NULLIF(tr.summary,''),a.summary)"
+		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = []any{language, u.ID}
 	}
 	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
@@ -562,12 +563,18 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		if image == "" && len(item.Enclosures) > 0 {
 			image = item.Enclosures[0].URL
 		}
-		desc := strings.TrimSpace(item.Description)
-		if desc == "" {
-			desc = strings.TrimSpace(item.Content)
+		summary := articletext.PlainText(item.Description)
+		if summary == "" {
+			summary = articletext.PlainText(item.Content)
 		}
-		summary := desc
-		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, desc, summary, link, image, published.UTC().Format(time.RFC3339))
+		description := summary
+		body, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).Fetch(ctx, link)
+		if fetchErr != nil {
+			log.Printf("rss article %s: %v", link, fetchErr)
+		} else if body != "" {
+			description = body
+		}
+		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, published.UTC().Format(time.RFC3339))
 		if e != nil {
 			return inserted, e
 		}

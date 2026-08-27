@@ -11,6 +11,7 @@ type config struct {
 	AIURL, AIKey, AIModel              string
 	ReutersCron, ReutersUserAgent      string
 	RSSInterval, AuthMaxAge            time.Duration
+	RSSContentUserAgent                string
 	DevAuth                            bool
 	ReutersCrawlEnabled                bool
 	DevUserID                          int64
@@ -29,6 +30,7 @@ func loadConfig() config {
 		ReutersCron:         env("REUTERS_CRON", "15 */2 * * *"),
 		ReutersUserAgent:    os.Getenv("REUTERS_CRAWLER_USER_AGENT"),
 		RSSInterval:         duration("RSS_FETCH_INTERVAL", 10*time.Minute),
+		RSSContentUserAgent: env("RSS_CONTENT_USER_AGENT", "TelegramNewsRSSBot/1.0"),
 		AuthMaxAge:          duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
 		DevAuth:             env("DEV_AUTH", "false") == "true",
 		DevUserID:           intEnv("DEV_USER_ID", 999001),
