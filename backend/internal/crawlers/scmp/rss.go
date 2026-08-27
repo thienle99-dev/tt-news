@@ -7,9 +7,9 @@ import "telegram-news/internal/crawlers/rss"
 // here when needed; article URL deduplication happens in the shared RSS worker.
 var Feeds = []rss.Source{
 	{
-		Name:     "SCMP All News",
-		URL:      "https://www.scmp.com/rss/feed",
-		Category: "world",
+		Name:        "SCMP All News",
+		URL:         "https://www.scmp.com/rss/feed",
+		Category:    "world",
 		CountryCode: "HK",
 		CountryName: "Hong Kong",
 	},

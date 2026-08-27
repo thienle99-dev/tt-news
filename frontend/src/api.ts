@@ -1,4 +1,4 @@
-import type { Article, Category, TelegramUser } from './types'
+import type { Article, Category, Country, Source, TelegramUser, Translation } from './types'
 
 const initData = window.Telegram?.WebApp?.initData ?? ''
 const headers = (): HeadersInit => initData ? { Authorization: `tma ${initData}` } : {}
@@ -14,7 +14,11 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   articles: (params: URLSearchParams) => request<Article[]>(`/api/articles?${params}`),
+	article: (id: number) => request<Article>(`/api/articles/${id}`),
+	translateVietnamese: (id: number) => request<Translation>(`/api/articles/${id}/translations/vi`, { method: 'POST' }),
   categories: () => request<Category[]>('/api/categories'),
+  sources: () => request<Source[]>('/api/sources'),
+  countries: () => request<Country[]>('/api/countries'),
   saved: () => request<Article[]>('/api/saved'),
   toggleSaved: (article: Article) => request<{ saved: boolean }>(`/api/saved/${article.id}`, { method: article.is_saved ? 'DELETE' : 'POST' }),
   me: () => request<TelegramUser>('/api/me'),

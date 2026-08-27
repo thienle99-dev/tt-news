@@ -77,10 +77,7 @@ func (s *server) crawlReuters(ctx context.Context, day time.Time) {
 		if article.PublishedAt.IsZero() {
 			article.PublishedAt = time.Now().UTC()
 		}
-		summary := s.summarize(ctx, article.Title, article.Body)
-		if summary == "" {
-			summary = article.Description
-		}
+		summary := article.Description
 		result, err := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at)
 VALUES(?, (SELECT id FROM categories WHERE slug='world'), ?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO NOTHING`,
 			sourceID, article.Title, article.Body, summary, article.URL, article.ImageURL, article.PublishedAt.UTC().Format(time.RFC3339))

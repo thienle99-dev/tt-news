@@ -34,6 +34,12 @@ type article struct {
 	IsSaved     bool   `json:"is_saved"`
 }
 
+type translation struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Summary     string `json:"summary"`
+}
+
 type ctxKey string
 
 const userKey ctxKey = "user"

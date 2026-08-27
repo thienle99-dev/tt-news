@@ -9,10 +9,9 @@ import (
 type config struct {
 	Port, DBPath, BotToken, MiniAppURL string
 	AIURL, AIKey, AIModel              string
-	TranslateLanguage                  string
 	ReutersCron, ReutersUserAgent      string
 	RSSInterval, AuthMaxAge            time.Duration
-	DevAuth, TranslateEnabled          bool
+	DevAuth                            bool
 	ReutersCrawlEnabled                bool
 	DevUserID                          int64
 }
@@ -26,8 +25,6 @@ func loadConfig() config {
 		AIURL:               os.Getenv("AI_URL"),
 		AIKey:               os.Getenv("AI_KEY"),
 		AIModel:             env("AI_MODEL", "gpt-4o-mini"),
-		TranslateEnabled:    env("AI_TRANSLATE_ENABLED", "false") == "true",
-		TranslateLanguage:   env("AI_TRANSLATE_LANGUAGE", "Vietnamese"),
 		ReutersCrawlEnabled: env("REUTERS_CRAWL_ENABLED", "false") == "true",
 		ReutersCron:         env("REUTERS_CRON", "15 */2 * * *"),
 		ReutersUserAgent:    os.Getenv("REUTERS_CRAWLER_USER_AGENT"),

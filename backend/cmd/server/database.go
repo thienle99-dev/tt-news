@@ -38,12 +38,14 @@ func openDB(file string) (*sql.DB, error) {
 }
 
 func migrate(db *sql.DB) error {
-	schema, err := embedded.ReadFile("migrations/001_init.sql")
-	if err != nil {
-		return err
-	}
-	if _, err = db.Exec(string(schema)); err != nil {
-		return err
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql"} {
+		schema, err := embedded.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		if _, err = db.Exec(string(schema)); err != nil {
+			return err
+		}
 	}
 
 	if _, err = db.Exec("ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT ''"); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
@@ -53,7 +55,9 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE sources ADD COLUMN country_code TEXT NOT NULL DEFAULT 'GLOBAL'",
 		"ALTER TABLE sources ADD COLUMN country_name TEXT NOT NULL DEFAULT 'Toàn cầu'",
 	} {
-		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") { return err }
+		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return err
+		}
 	}
 
 	categories := []struct{ slug, name string }{
@@ -75,7 +79,9 @@ func migrate(db *sql.DB) error {
 	}
 	sources = append(sources, scmp.Feeds...)
 	for _, source := range sources {
-		if source.CountryCode == "" { source.CountryCode, source.CountryName = "GLOBAL", "Toàn cầu" }
+		if source.CountryCode == "" {
+			source.CountryCode, source.CountryName = "GLOBAL", "Toàn cầu"
+		}
 		if _, err = db.Exec(`INSERT INTO sources(name,feed_url,category_id,country_code,country_name) VALUES(?,?,(SELECT id FROM categories WHERE slug=?),?,?) ON CONFLICT(feed_url) DO UPDATE SET country_code=excluded.country_code,country_name=excluded.country_name`, source.Name, source.URL, source.Category, source.CountryCode, source.CountryName); err != nil {
 			return err
 		}

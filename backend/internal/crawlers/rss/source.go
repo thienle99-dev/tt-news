@@ -5,9 +5,9 @@ package rss
 // fields; the shared worker handles HTTP fetching, parsing, deduplication and
 // persistence.
 type Source struct {
-	Name     string
-	URL      string
-	Category string
+	Name        string
+	URL         string
+	Category    string
 	CountryCode string
 	CountryName string
 }

@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed migrations/001_init.sql static/*
+//go:embed migrations/*.sql static/*
 var embedded embed.FS
 
 func main() {
@@ -116,9 +117,10 @@ func runRSSOnce(cfg config, filter string) {
 }
 
 type server struct {
-	db   *sql.DB
-	cfg  config
-	feed *gofeed.Parser
+	db            *sql.DB
+	cfg           config
+	feed          *gofeed.Parser
+	translationMu sync.Mutex
 }
 
 func (s *server) routes() http.Handler {
@@ -134,6 +136,7 @@ func (s *server) routes() http.Handler {
 		r.Get("/countries", s.countries)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
+			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
 			r.Get("/saved", s.saved)
 			r.Post("/saved/{id}", s.save)
 			r.Delete("/saved/{id}", s.unsave)
@@ -293,6 +296,45 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, a)
 }
+func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.translationMu.Lock()
+	defer s.translationMu.Unlock()
+
+	var translated translation
+	err := s.db.QueryRowContext(r.Context(), `SELECT title,description,summary FROM article_translations WHERE article_id=? AND language_code='vi'`, id).Scan(&translated.Title, &translated.Description, &translated.Summary)
+	if err == nil {
+		jsonOut(w, http.StatusOK, translated)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, http.StatusInternalServerError, "could not load translation")
+		return
+	}
+
+	var a article
+	err = s.db.QueryRowContext(r.Context(), `SELECT id,title,description,summary FROM articles WHERE id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary)
+	if errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not load article")
+		return
+	}
+	translated, err = s.translate(r.Context(), a)
+	if err != nil {
+		log.Printf("translate article %d: %v", a.ID, err)
+		jsonErr(w, http.StatusServiceUnavailable, "could not translate article")
+		return
+	}
+	_, err = s.db.ExecContext(r.Context(), `INSERT INTO article_translations(article_id,language_code,title,description,summary) VALUES(?,'vi',?,?,?)`, a.ID, translated.Title, translated.Description, translated.Summary)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not save translation")
+		return
+	}
+	jsonOut(w, http.StatusOK, translated)
+}
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 	rows, e := s.db.QueryContext(r.Context(), "SELECT slug,name FROM categories ORDER BY name")
 	if e != nil {
@@ -310,18 +352,35 @@ func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) sources(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `SELECT id,name,country_code,country_name FROM sources WHERE enabled=1 ORDER BY name`)
-	if err != nil { jsonErr(w, 500, "could not load sources"); return }
+	if err != nil {
+		jsonErr(w, 500, "could not load sources")
+		return
+	}
 	defer rows.Close()
 	out := []map[string]any{}
-	for rows.Next() { var id int64; var name, code, country string; if err=rows.Scan(&id,&name,&code,&country); err==nil { out=append(out,map[string]any{"id":id,"name":name,"country_code":code,"country_name":country}) } }
+	for rows.Next() {
+		var id int64
+		var name, code, country string
+		if err = rows.Scan(&id, &name, &code, &country); err == nil {
+			out = append(out, map[string]any{"id": id, "name": name, "country_code": code, "country_name": country})
+		}
+	}
 	jsonOut(w, 200, out)
 }
 func (s *server) countries(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.QueryContext(r.Context(), `SELECT DISTINCT country_code,country_name FROM sources WHERE enabled=1 ORDER BY country_name`)
-	if err != nil { jsonErr(w, 500, "could not load countries"); return }
+	if err != nil {
+		jsonErr(w, 500, "could not load countries")
+		return
+	}
 	defer rows.Close()
 	out := []map[string]string{}
-	for rows.Next() { var code,name string; if err=rows.Scan(&code,&name); err==nil { out=append(out,map[string]string{"code":code,"name":name}) } }
+	for rows.Next() {
+		var code, name string
+		if err = rows.Scan(&code, &name); err == nil {
+			out = append(out, map[string]string{"code": code, "name": name})
+		}
+	}
 	jsonOut(w, 200, out)
 }
 func (s *server) saved(w http.ResponseWriter, r *http.Request) {
@@ -527,7 +586,7 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		if desc == "" {
 			desc = strings.TrimSpace(item.Content)
 		}
-		summary := s.summarize(ctx, title, desc)
+		summary := desc
 		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, desc, summary, link, image, published.UTC().Format(time.RFC3339))
 		if e != nil {
 			return inserted, e
@@ -549,36 +608,29 @@ func normalizeURL(raw string) string {
 	return u.String()
 }
 
-func (s *server) summarize(ctx context.Context, title, body string) string {
-	fallback := strings.TrimSpace(body)
-	if !s.cfg.TranslateEnabled || s.cfg.AIURL == "" || s.cfg.AIKey == "" {
-		return fallback
+func (s *server) translate(ctx context.Context, article article) (translation, error) {
+	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
+		return translation{}, errors.New("translation service is not configured")
 	}
-	text := strings.TrimSpace(title + "\n\n" + body)
-	if len(text) > 6000 {
-		text = text[:6000]
-	}
-	instruction := fmt.Sprintf("You summarize news for a reader in %s. Return only a concise summary in %s, at most two sentences. Translate essential information faithfully; do not add facts.", s.cfg.TranslateLanguage, s.cfg.TranslateLanguage)
-	payload := map[string]any{"model": s.cfg.AIModel, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": text}}, "temperature": 0.2}
+	instruction := "Translate each supplied news field from English to Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize, add facts, or use Markdown. Return only a JSON object with string fields title, description, and summary."
+	payload := map[string]any{"model": s.cfg.AIModel, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\n\ndescription: %s\n\nsummary: %s", article.Title, article.Description, article.Summary)}}, "temperature": 0.2, "response_format": map[string]string{"type": "json_object"}}
 	data, e := json.Marshal(payload)
 	if e != nil {
-		return fallback
+		return translation{}, e
 	}
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.AIURL, strings.NewReader(string(data)))
 	if e != nil {
-		return fallback
+		return translation{}, e
 	}
 	req.Header.Set("Authorization", "Bearer "+s.cfg.AIKey)
 	req.Header.Set("Content-Type", "application/json")
 	res, e := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if e != nil {
-		log.Printf("AI summary: %v", e)
-		return fallback
+		return translation{}, e
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		log.Printf("AI summary: endpoint returned %s", res.Status)
-		return fallback
+		return translation{}, fmt.Errorf("translation endpoint returned %s", res.Status)
 	}
 	var out struct {
 		Choices []struct {
@@ -588,16 +640,20 @@ func (s *server) summarize(ctx context.Context, title, body string) string {
 		} `json:"choices"`
 	}
 	if e = json.NewDecoder(res.Body).Decode(&out); e != nil || len(out.Choices) == 0 {
-		if e != nil {
-			log.Printf("AI summary decode: %v", e)
-		}
-		return fallback
+		if e == nil { e = errors.New("translation response has no choices") }
+		return translation{}, e
 	}
-	summary := strings.TrimSpace(out.Choices[0].Message.Content)
-	if summary == "" {
-		return fallback
+	var result translation
+	if e = json.Unmarshal([]byte(out.Choices[0].Message.Content), &result); e != nil {
+		return translation{}, fmt.Errorf("decode translation: %w", e)
 	}
-	return summary
+	result.Title = strings.TrimSpace(result.Title)
+	result.Description = strings.TrimSpace(result.Description)
+	result.Summary = strings.TrimSpace(result.Summary)
+	if result.Title == "" {
+		return translation{}, errors.New("translation response is missing title")
+	}
+	return result, nil
 }
 
 func (s *server) runBot(ctx context.Context) {
