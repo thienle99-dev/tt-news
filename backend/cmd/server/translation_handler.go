@@ -61,7 +61,7 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 	defer s.translationMu.Unlock()
 
 	var article article
-	err := s.db.QueryRowContext(r.Context(), `SELECT id,title,description,url FROM articles WHERE id=?`, id).Scan(&article.ID, &article.Title, &article.Description, &article.URL)
+	err := s.db.QueryRowContext(r.Context(), `SELECT id,title,description,full_content,url FROM articles WHERE id=?`, id).Scan(&article.ID, &article.Title, &article.Description, &article.FullContent, &article.URL)
 	if errors.Is(err, sql.ErrNoRows) {
 		jsonErr(w, http.StatusNotFound, "article not found")
 		return
@@ -71,20 +71,15 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := article.Description
+	body := article.FullContent
 	extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(r.Context(), article.URL)
 	if fetchErr != nil {
-		log.Printf("resummarize article %d: %v", article.ID, fetchErr)
-		if len(body) < 300 {
-			jsonErr(w, http.StatusBadGateway, "could not fetch full article")
-			return
-		}
-		log.Printf("resummarize article %d: using stored full RSS content", article.ID)
-	} else if len(extracted.Text) >= 300 {
+		log.Printf("resummarize article %d: could not refresh full content: %v", article.ID, fetchErr)
+	} else if len(extracted.Text) > len(body) {
 		body = extracted.Text
 	}
 	if len(body) < 300 {
-		jsonErr(w, http.StatusBadGateway, "full article content is unavailable")
+		jsonErr(w, http.StatusConflict, "full article content is unavailable; crawl the source again")
 		return
 	}
 	log.Printf("resummarize article id=%d: sending AI request (content_chars=%d model=%q)", article.ID, len(body), s.cfg.AIModel)
@@ -94,7 +89,7 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusServiceUnavailable, "could not resummarize article")
 		return
 	}
-	if _, err = s.db.ExecContext(r.Context(), `UPDATE articles SET title=?,description=?,summary=? WHERE id=?`, brief.Title, body, brief.Summary, article.ID); err != nil {
+	if _, err = s.db.ExecContext(r.Context(), `UPDATE articles SET title=?,full_content=?,summary=? WHERE id=?`, brief.Title, body, brief.Summary, article.ID); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not save summary")
 		return
 	}

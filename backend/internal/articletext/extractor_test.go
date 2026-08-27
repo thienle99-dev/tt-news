@@ -93,3 +93,33 @@ func TestFetchContentFallsBackTo9to5GoogleAPIOnForbiddenPage(t *testing.T) {
 		t.Fatalf("images = %q, want %q", got, want)
 	}
 }
+
+func TestFetchContentFallsBackToReaderForForbiddenGizmochinaPage(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "www.gizmochina.com" {
+			return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader("challenge"))}, nil
+		}
+		if req.URL.Host != "r.jina.ai" || req.URL.Path != "/http://www.gizmochina.com/2026/08/27/example/" {
+			t.Fatalf("unexpected fallback URL: %s", req.URL)
+		}
+		body := `Title: Example
+
+URL Source: https://www.gizmochina.com/2026/08/27/example/
+
+Markdown Content:
+Full product specifications include a 500 ml capacity and 316L stainless steel liner.
+
+![Product image](https://cdn.example.test/product.jpg)`
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/plain"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	content, err := (Client{HTTPClient: client}).FetchContent(context.Background(), "https://www.gizmochina.com/2026/08/27/example/")
+	if err != nil {
+		t.Fatalf("FetchContent() error = %v", err)
+	}
+	if !strings.HasPrefix(content.Text, "Full product specifications") || strings.Contains(content.Text, "URL Source:") {
+		t.Fatalf("text = %q", content.Text)
+	}
+	if got, want := strings.Join(content.Images, ","), "https://cdn.example.test/product.jpg"; got != want {
+		t.Fatalf("images = %q, want %q", got, want)
+	}
+}

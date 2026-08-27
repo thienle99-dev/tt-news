@@ -16,6 +16,7 @@ type config struct {
 	RSSFetchWorkers                    int
 	ContentCleanupLimit                 int
 	DevAuth                            bool
+	AIBackgroundScanning                bool
 	RSSTranslateVietnamese             bool
 	DevUserID                          int64
 }
@@ -29,6 +30,7 @@ func loadConfig() config {
 		AIURL:                  os.Getenv("AI_URL"),
 		AIKey:                  os.Getenv("AI_KEY"),
 		AIModel:                env("AI_MODEL", "gpt-4o-mini"),
+		AIBackgroundScanning:   env("AI_BACKGROUND_SCANNING", "false") == "true",
 		RSSTranslateVietnamese: env("RSS_TRANSLATE_VI", "true") == "true",
 		RSSInterval:            duration("RSS_FETCH_INTERVAL", 10*time.Minute),
 		FeaturedBriefInterval:  duration("FEATURED_BRIEF_INTERVAL", 6*time.Hour),

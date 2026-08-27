@@ -57,23 +57,39 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	}
 	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("data:\n%s", mustJSON(input))}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload)
-	if err != nil { return FeaturedBrief{}, err }
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
-	if err != nil { return FeaturedBrief{}, err }
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	client := c.HTTPClient
-	if client == nil { client = &http.Client{Timeout: 45 * time.Second} }
+	if client == nil {
+		client = &http.Client{Timeout: 45 * time.Second}
+	}
 	res, err := client.Do(req)
-	if err != nil { return FeaturedBrief{}, err }
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
 	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 { return FeaturedBrief{}, fmt.Errorf("featured endpoint returned %s", res.Status) }
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return FeaturedBrief{}, fmt.Errorf("featured endpoint returned %s", res.Status)
+	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil { return FeaturedBrief{}, err }
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
 	content, err := completionContent(body)
-	if err != nil { return FeaturedBrief{}, err }
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
 	var brief FeaturedBrief
-	if err = json.Unmarshal([]byte(content), &brief); err != nil { return FeaturedBrief{}, fmt.Errorf("decode featured briefing: %w", err) }
+	if err = json.Unmarshal([]byte(content), &brief); err != nil {
+		return FeaturedBrief{}, fmt.Errorf("decode featured briefing: %w", err)
+	}
 	brief.Title, brief.Intro = strings.TrimSpace(brief.Title), strings.TrimSpace(brief.Intro)
 	return brief, nil
 }
@@ -81,19 +97,47 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 func mustJSON(value any) string { data, _ := json.Marshal(value); return string(data) }
 
 func (c Client) IsJunk(ctx context.Context, title string) (bool, error) {
-	if c.URL == "" || c.APIKey == "" { return false, errors.New("translation service is not configured") }
+	if c.URL == "" || c.APIKey == "" {
+		return false, errors.New("translation service is not configured")
+	}
 	instruction := `Classify whether an RSS item is unsuitable for an international news feed using only its title. Mark junk=true for weather forecasts or routine weather updates, advertisements or sponsored PR, podcasts/videos/audio-only posts, photo galleries, entertainment, celebrity, lifestyle, fashion, food, travel, or extremely thin or malformed items. Do not mark ordinary reporting, analysis, opinion, public-safety weather emergencies, culture with public significance, or sports news as junk. When the title alone is insufficient, return junk=false. Return only JSON: {"junk":true|false}.`
 	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s", title)}}, "temperature": 0, "stream": false, "response_format": map[string]string{"type": "json_object"}}
-	data, err := json.Marshal(payload); if err != nil { return false, err }
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data))); if err != nil { return false, err }
-	req.Header.Set("Authorization", "Bearer "+c.APIKey); req.Header.Set("Content-Type", "application/json")
-	client := c.HTTPClient; if client == nil { client = &http.Client{Timeout: 30 * time.Second} }
-	res, err := client.Do(req); if err != nil { return false, err }; defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 { return false, fmt.Errorf("content review endpoint returned %s", res.Status) }
-	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20)); if err != nil { return false, err }
-	content, err := completionContent(body); if err != nil { return false, err }
-	var result struct { Junk bool `json:"junk"` }
-	if err = json.Unmarshal([]byte(content), &result); err != nil { return false, fmt.Errorf("decode content review: %w", err) }
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return false, fmt.Errorf("content review endpoint returned %s", res.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return false, err
+	}
+	content, err := completionContent(body)
+	if err != nil {
+		return false, err
+	}
+	var result struct {
+		Junk bool `json:"junk"`
+	}
+	if err = json.Unmarshal([]byte(content), &result); err != nil {
+		return false, fmt.Errorf("decode content review: %w", err)
+	}
 	return result.Junk, nil
 }
 
@@ -110,7 +154,7 @@ func (c Client) Summarize(ctx context.Context, title, body string) (Fields, erro
 
 Work silently in two passes. First build a fact inventory from the source: the central event or announcement; the people, organizations, and products involved; date and location; price and availability; specifications, measurements, materials, performance figures, and test conditions; notable features; practical benefits or consequences; comparisons, limitations, and what happens next. Then select and organize the facts that let a reader understand the article without opening the source.
 
-The amount of detail must follow the source. For a substantive article, write 6 to 10 bullets and approximately 140 to 220 words in total. For a genuinely short or sparse article, use 4 to 6 bullets and fewer words rather than padding or inventing information. Each bullet should normally contain 1 to 2 complete sentences and combine closely related facts into a useful point; do not reduce a bullet to a label or a single isolated number. Begin with a clear overview of what happened, then move through the most relevant supporting detail in a logical order.
+The amount of detail must follow the source. For a substantive article, write 7 to 10 bullets and approximately 160 to 240 words in total. A product article containing at least five distinct supported facts or specification groups is substantive and MUST use this 7-to-10-bullet range; do not classify it as sparse merely because the central announcement is simple. Only when the entire source genuinely supplies fewer than five distinct facts may you use 4 to 6 bullets and fewer words rather than padding or inventing information. Each bullet should normally contain 1 to 2 complete sentences and combine closely related facts into a useful point; do not reduce a bullet to a label or a single isolated number. Begin with a clear overview of what happened, then move through the most relevant supporting detail in a logical order.
 
 Adapt coverage to the subject. For a product launch, include, when supported: what the product is and where it is launching; campaign or sale dates; local price and any converted price; capacity or dimensions; construction and materials; measured or claimed performance with temperatures or duration; opening, locking, sealing, cleaning, safety, and portability features; colors or variants; and any stated availability limits. For other news, prioritize who did what, when and where, the evidence or key figures, why it matters, the response from affected parties, and the next known step.
 

@@ -58,6 +58,7 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE sources ADD COLUMN country_name TEXT NOT NULL DEFAULT 'Toàn cầu'",
 		"ALTER TABLE articles ADD COLUMN title_fingerprint TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_fingerprint TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN full_content TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_reviewed_at TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_review_version TEXT NOT NULL DEFAULT ''",
 	} {

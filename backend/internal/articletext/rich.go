@@ -42,6 +42,9 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 	if res.StatusCode == http.StatusForbidden && is9to5Google(req.URL) {
 		return c.fetch9to5GooglePost(ctx, req.URL)
 	}
+	if res.StatusCode == http.StatusForbidden && isGizmochina(req.URL) {
+		return c.fetchGizmochinaReader(ctx, req.URL)
+	}
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return Content{}, fmt.Errorf("article page returned %s", res.Status)
 	}
@@ -78,6 +81,61 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 func is9to5Google(pageURL *url.URL) bool {
 	host := strings.ToLower(pageURL.Hostname())
 	return host == "9to5google.com" || host == "www.9to5google.com"
+}
+
+func isGizmochina(pageURL *url.URL) bool {
+	host := strings.ToLower(pageURL.Hostname())
+	return host == "gizmochina.com" || host == "www.gizmochina.com"
+}
+
+// fetchGizmochinaReader uses a read-only rendering endpoint because
+// Gizmochina's public article and WordPress API URLs can both return a
+// Cloudflare challenge to server-side clients.
+func (c Client) fetchGizmochinaReader(ctx context.Context, pageURL *url.URL) (Content, error) {
+	readerURL := "https://r.jina.ai/http://www.gizmochina.com" + pageURL.EscapedPath()
+	if pageURL.RawQuery != "" {
+		readerURL += "?" + pageURL.RawQuery
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readerURL, nil)
+	if err != nil {
+		return Content{}, err
+	}
+	req.Header.Set("Accept", "text/plain")
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return Content{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return Content{}, fmt.Errorf("Gizmochina reader returned %s", res.Status)
+	}
+	maxBytes := c.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxBytes
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxBytes+1))
+	if err != nil {
+		return Content{}, err
+	}
+	if int64(len(body)) > maxBytes {
+		return Content{}, fmt.Errorf("Gizmochina reader response exceeds %d byte limit", maxBytes)
+	}
+	text := strings.TrimSpace(string(body))
+	const marker = "Markdown Content:"
+	if index := strings.Index(text, marker); index >= 0 {
+		text = strings.TrimSpace(text[index+len(marker):])
+	}
+	if text == "" {
+		return Content{}, errors.New("Gizmochina reader returned empty article content")
+	}
+	return Content{Text: text, Images: markdownImages(text, pageURL)}, nil
 }
 
 func (c Client) fetch9to5GooglePost(ctx context.Context, pageURL *url.URL) (Content, error) {
@@ -178,5 +236,35 @@ func metadataImages(doc *goquery.Document, base *url.URL) []string {
 		seen[u.String()] = true
 		images = append(images, u.String())
 	})
+	return images
+}
+
+func markdownImages(markdown string, base *url.URL) []string {
+	seen, images := map[string]bool{}, make([]string, 0)
+	remaining := markdown
+	for len(images) < 12 {
+		start := strings.Index(remaining, "![")
+		if start < 0 {
+			break
+		}
+		remaining = remaining[start+2:]
+		separator := strings.Index(remaining, "](")
+		if separator < 0 {
+			break
+		}
+		remaining = remaining[separator+2:]
+		end := strings.IndexByte(remaining, ')')
+		if end < 0 {
+			break
+		}
+		raw := strings.TrimSpace(remaining[:end])
+		remaining = remaining[end+1:]
+		u, err := base.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || seen[u.String()] {
+			continue
+		}
+		seen[u.String()] = true
+		images = append(images, u.String())
+	}
 	return images
 }

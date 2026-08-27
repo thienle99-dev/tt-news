@@ -68,9 +68,14 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go app.runRSS(ctx)
-	go app.runTranslationWorker(ctx)
-	go app.runFeaturedWorker(ctx)
-	go app.runContentCleanupWorker(ctx)
+	if cfg.AIBackgroundScanning {
+		log.Print("AI background scanning is enabled")
+		go app.runTranslationWorker(ctx)
+		go app.runFeaturedWorker(ctx)
+		go app.runContentCleanupWorker(ctx)
+	} else {
+		log.Print("AI background scanning is disabled; AI runs only for explicit manual actions")
+	}
 	if cfg.BotToken != "" && cfg.MiniAppURL != "" {
 		go app.runBot(ctx)
 	} else {
@@ -540,7 +545,9 @@ func intEnvFrom(v string, d int) int {
 
 func (s *server) runRSS(ctx context.Context) {
 	s.fetchSources(ctx, "", time.Time{})
-	s.generateFeaturedBrief(ctx)
+	if s.cfg.AIBackgroundScanning {
+		s.generateFeaturedBrief(ctx)
+	}
 	t := time.NewTicker(s.cfg.RSSInterval)
 	defer t.Stop()
 	for {
@@ -549,7 +556,9 @@ func (s *server) runRSS(ctx context.Context) {
 			return
 		case <-t.C:
 			s.fetchSources(ctx, "", time.Time{})
-			s.generateFeaturedBrief(ctx)
+			if s.cfg.AIBackgroundScanning {
+				s.generateFeaturedBrief(ctx)
+			}
 		}
 	}
 }
@@ -705,16 +714,17 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		}
 		contentImages := []string{}
 		description := articletext.PlainText(item.Description)
-		if content := articletext.PlainText(item.Content); len(content) > len(description) {
-			description = content
+		fullContent := articletext.PlainText(item.Content)
+		body := fullContent
+		if body == "" {
+			body = description
 		}
-		body := description
 		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
 		} else {
 			if len(extracted.Text) >= 300 {
 				body = extracted.Text
-				description = extracted.Text
+				fullContent = extracted.Text
 			} else if extracted.Text != "" {
 				log.Printf("rss article %s: extracted text too short; using RSS description", link)
 			}
@@ -728,7 +738,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, marshalErr
 		}
 		if existingArticleID != 0 {
-			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN length(?)>length(description) THEN ? ELSE description END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, existingArticleID); e != nil {
+			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, existingArticleID); e != nil {
 				return result, e
 			}
 			result.Existing++
@@ -746,7 +756,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 				return result, e
 			}
 		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, description, fullContent, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
 			return result, e
 		}
