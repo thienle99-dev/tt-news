@@ -288,44 +288,42 @@ small {
 }
 .category-label {
   display: inline-block;
-  padding: 3px 6px;
-  border-radius: 999px;
-  background: var(--accent-soft);
   color: var(--accent);
   font:
-    700 9px/1.3 Roboto,
+    700 8px/1.25 Roboto,
     sans-serif;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.category-technology { background: #e9e7ff; color: #5b3db4; }
-.category-programming { background: #dceeff; color: #1665b5; }
-.category-world { background: #dff5f6; color: #08767d; }
-.category-business { background: #fff0d8; color: #a75b00; }
-.category-society { background: #fce3eb; color: #b33563; }
-.category-culture { background: #f7e8ff; color: #8d4cb0; }
-.category-sports { background: #def5e7; color: #23754c; }
-.category-education { background: #ffe9d8; color: #ae5825; }
-.category-health { background: #fbe2f0; color: #b42a77; }
-.category-science { background: #e0f3ff; color: #2378a5; }
-.category-security { background: #fde5e1; color: #b84436; }
-.category-ai { background: #eee4ff; color: #7041ae; }
-.category-llm { background: #e3eaff; color: #4c5db6; }
-.category-cybersecurity { background: #d9f4ed; color: #18766b; }
-:root[data-telegram-theme="dark"] .category-technology { background: #33285a; color: #d5c7ff; }
-:root[data-telegram-theme="dark"] .category-programming { background: #18365d; color: #b6d8ff; }
-:root[data-telegram-theme="dark"] .category-world { background: #163e42; color: #a8e1e2; }
-:root[data-telegram-theme="dark"] .category-business { background: #4d351c; color: #ffd59a; }
-:root[data-telegram-theme="dark"] .category-society { background: #4b2434; color: #ffc1d4; }
-:root[data-telegram-theme="dark"] .category-culture { background: #412850; color: #eac7ff; }
-:root[data-telegram-theme="dark"] .category-sports { background: #1c4930; color: #b4e9ca; }
-:root[data-telegram-theme="dark"] .category-education { background: #4e2d20; color: #ffd0af; }
-:root[data-telegram-theme="dark"] .category-health { background: #4d2340; color: #ffc0e0; }
-:root[data-telegram-theme="dark"] .category-science { background: #1c4054; color: #b5e3ff; }
-:root[data-telegram-theme="dark"] .category-security { background: #542720; color: #ffc4bb; }
-:root[data-telegram-theme="dark"] .category-ai { background: #3e2857; color: #ddc5ff; }
-:root[data-telegram-theme="dark"] .category-llm { background: #293660; color: #cbd5ff; }
-:root[data-telegram-theme="dark"] .category-cybersecurity { background: #16443d; color: #a9e6d9; }
+:is(.hero-card, .news-card) .category-label { padding: 2px 5px; border-radius: 999px; background: var(--accent-soft); }
+:is(.hero-card, .news-card) .category-technology { background: #e9e7ff; color: #5b3db4; }
+:is(.hero-card, .news-card) .category-programming { background: #dceeff; color: #1665b5; }
+:is(.hero-card, .news-card) .category-world { background: #dff5f6; color: #08767d; }
+:is(.hero-card, .news-card) .category-business { background: #fff0d8; color: #a75b00; }
+:is(.hero-card, .news-card) .category-society { background: #fce3eb; color: #b33563; }
+:is(.hero-card, .news-card) .category-culture { background: #f7e8ff; color: #8d4cb0; }
+:is(.hero-card, .news-card) .category-sports { background: #def5e7; color: #23754c; }
+:is(.hero-card, .news-card) .category-education { background: #ffe9d8; color: #ae5825; }
+:is(.hero-card, .news-card) .category-health { background: #fbe2f0; color: #b42a77; }
+:is(.hero-card, .news-card) .category-science { background: #e0f3ff; color: #2378a5; }
+:is(.hero-card, .news-card) .category-security { background: #fde5e1; color: #b84436; }
+:is(.hero-card, .news-card) .category-ai { background: #eee4ff; color: #7041ae; }
+:is(.hero-card, .news-card) .category-llm { background: #e3eaff; color: #4c5db6; }
+:is(.hero-card, .news-card) .category-cybersecurity { background: #d9f4ed; color: #18766b; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-technology { background: #33285a; color: #d5c7ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-programming { background: #18365d; color: #b6d8ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-world { background: #163e42; color: #a8e1e2; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-business { background: #4d351c; color: #ffd59a; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-society { background: #4b2434; color: #ffc1d4; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-culture { background: #412850; color: #eac7ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-sports { background: #1c4930; color: #b4e9ca; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-education { background: #4e2d20; color: #ffd0af; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-health { background: #4d2340; color: #ffc0e0; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-science { background: #1c4054; color: #b5e3ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-security { background: #542720; color: #ffc4bb; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-ai { background: #3e2857; color: #ddc5ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-llm { background: #293660; color: #cbd5ff; }
+:root[data-telegram-theme="dark"] :is(.hero-card, .news-card) .category-cybersecurity { background: #16443d; color: #a9e6d9; }
 .save {
   position: absolute;
   z-index: 2;
@@ -347,8 +345,8 @@ small {
   color: var(--accent);
 }
 .save .icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 .source-citation,
 .detail-citation {

@@ -76,7 +76,7 @@ const text = {
     home: "Home",
     settings: "Settings",
     interface: "INTERFACE",
-    theme: "Theme follows Telegram.",
+    theme: "Theme follows Telegram or your device setting.",
     back: "Back",
     readOriginal: "Read original article",
     openArticle: "Open article",
@@ -129,7 +129,7 @@ const text = {
     home: "Trang chủ",
     settings: "Cài đặt",
     interface: "GIAO DIỆN",
-    theme: "Theme tự động theo Telegram.",
+    theme: "Theme tự động theo Telegram hoặc thiết bị của bạn.",
     back: "Quay lại",
     readOriginal: "Đọc bài gốc",
     openArticle: "Mở bài viết",
@@ -1283,9 +1283,12 @@ export default function App() {
   const t = text[locale];
   useEffect(() => {
     const app = window.Telegram?.WebApp;
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
     const applyTheme = () => {
       document.documentElement.dataset.telegramTheme =
-        app?.colorScheme === "dark" ? "dark" : "light";
+        (app?.colorScheme ?? (systemTheme.matches ? "dark" : "light")) === "dark"
+          ? "dark"
+          : "light";
     };
     applyTheme();
     if (app) {
@@ -1294,6 +1297,8 @@ export default function App() {
       app.onEvent("themeChanged", applyTheme);
       return () => app.offEvent("themeChanged", applyTheme);
     }
+    systemTheme.addEventListener("change", applyTheme);
+    return () => systemTheme.removeEventListener("change", applyTheme);
   }, []);
   useEffect(() => {
     const onPopState = () => setArticleID(articleIDFromPath());
