@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"telegram-news/internal/articletext"
 	translationservice "telegram-news/internal/translation"
 )
 
@@ -52,4 +53,42 @@ func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
 
 func translationResult(fields translationservice.Fields) translation {
 	return translation{Title: fields.Title, Description: fields.Description, Summary: fields.Summary}
+}
+
+func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.translationMu.Lock()
+	defer s.translationMu.Unlock()
+
+	var article article
+	err := s.db.QueryRowContext(r.Context(), `SELECT id,title,description,url FROM articles WHERE id=?`, id).Scan(&article.ID, &article.Title, &article.Description, &article.URL)
+	if errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, http.StatusNotFound, "article not found")
+		return
+	}
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not load article")
+		return
+	}
+
+	body := article.Description
+	if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(r.Context(), article.URL); fetchErr != nil {
+		log.Printf("resummarize article %d: %v", article.ID, fetchErr)
+	} else if len(extracted.Text) >= 300 {
+		body = extracted.Text
+	}
+	brief, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(r.Context(), article.Title, body)
+	if err != nil {
+		log.Printf("resummarize article %d: %v", article.ID, err)
+		jsonErr(w, http.StatusServiceUnavailable, "could not resummarize article")
+		return
+	}
+	if _, err = s.db.ExecContext(r.Context(), `UPDATE articles SET title=?,summary=? WHERE id=?`, brief.Title, brief.Summary, article.ID); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not save summary")
+		return
+	}
+	if _, err = s.db.ExecContext(r.Context(), `DELETE FROM article_translations WHERE article_id=? AND language_code='vi'`, article.ID); err != nil {
+		log.Printf("resummarize article %d translation cleanup: %v", article.ID, err)
+	}
+	jsonOut(w, http.StatusOK, translationResult(brief))
 }

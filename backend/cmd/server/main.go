@@ -177,6 +177,7 @@ func (s *server) routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
+			r.Post("/articles/{id}/resummarize", s.resummarizeArticle)
 			r.Get("/saved", s.saved)
 			r.Post("/saved/{id}", s.save)
 			r.Delete("/saved/{id}", s.unsave)
@@ -715,8 +716,10 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
 		} else {
-			if extracted.Text != "" {
+			if len(extracted.Text) >= 300 {
 				body = extracted.Text
+			} else if extracted.Text != "" {
+				log.Printf("rss article %s: extracted text too short for summary; using RSS description", link)
 			}
 			contentImages = extracted.Images
 			if image == "" && len(contentImages) > 0 {

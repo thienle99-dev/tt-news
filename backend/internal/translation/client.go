@@ -80,10 +80,10 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 
 func mustJSON(value any) string { data, _ := json.Marshal(value); return string(data) }
 
-func (c Client) IsJunk(ctx context.Context, title, summary string) (bool, error) {
+func (c Client) IsJunk(ctx context.Context, title string) (bool, error) {
 	if c.URL == "" || c.APIKey == "" { return false, errors.New("translation service is not configured") }
-	instruction := `Classify whether this RSS item is unsuitable for an international news feed. Mark junk=true for weather forecasts or routine weather updates, advertisements or sponsored PR, podcasts/videos/audio-only posts, photo galleries, entertainment, celebrity, lifestyle, fashion, food, travel, or extremely thin or malformed items. Do not mark ordinary reporting, analysis, opinion, public-safety weather emergencies, culture with public significance, or sports news as junk. Return only JSON: {"junk":true|false}.`
-	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\nsummary: %s", title, summary)}}, "temperature": 0, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	instruction := `Classify whether an RSS item is unsuitable for an international news feed using only its title. Mark junk=true for weather forecasts or routine weather updates, advertisements or sponsored PR, podcasts/videos/audio-only posts, photo galleries, entertainment, celebrity, lifestyle, fashion, food, travel, or extremely thin or malformed items. Do not mark ordinary reporting, analysis, opinion, public-safety weather emergencies, culture with public significance, or sports news as junk. When the title alone is insufficient, return junk=false. Return only JSON: {"junk":true|false}.`
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s", title)}}, "temperature": 0, "stream": false, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload); if err != nil { return false, err }
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data))); if err != nil { return false, err }
 	req.Header.Set("Authorization", "Bearer "+c.APIKey); req.Header.Set("Content-Type", "application/json")
@@ -105,8 +105,8 @@ func (c Client) Summarize(ctx context.Context, title, body string) (Fields, erro
 	if len(body) > 12000 {
 		body = body[:12000]
 	}
-	instruction := `Write an original, factual news brief from the supplied source material. Do not copy phrases longer than necessary. Return 3 to 5 concise bullet points. Your entire response must be one JSON object with string keys "title" and "summary" only.`
-	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("source title: %s\n\nsource material:\n%s", title, body)}}, "temperature": 0.3, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	instruction := `You are a careful news editor. Create an original, factual brief from the supplied article text, not merely from its headline. First identify the central event; then synthesize only the 3 to 5 most consequential, supported facts. Cover what happened, who is involved, when/where it happened, and the practical impact or next development when the source provides them. Preserve important names, numbers, dates, and attribution. Distinguish confirmed facts from claims or projections. Do not add outside knowledge, speculation, background not present in the text, or details that cannot be supported by the article. Omit trivia and repeated points. Do not copy phrases longer than necessary. Return one JSON object only with string keys "title" and "summary". Format summary as concise bullet points.`
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("source headline: %s\n\noriginal article text:\n%s", title, body)}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return Fields{}, err

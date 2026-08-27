@@ -14,8 +14,9 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   articles: (params: URLSearchParams) => request<Article[]>(`/api/articles?${params}`),
-	article: (id: number) => request<Article>(`/api/articles/${id}`),
+  article: (id: number) => request<Article>(`/api/articles/${id}`),
 	translateVietnamese: (id: number) => request<Translation>(`/api/articles/${id}/translations/vi`, { method: 'POST' }),
+  resummarize: (id: number) => request<Pick<Article, 'title' | 'summary'>>(`/api/articles/${id}/resummarize`, { method: 'POST' }),
   categories: () => request<Category[]>('/api/categories'),
   sources: () => request<Source[]>('/api/sources'),
   countries: () => request<Country[]>('/api/countries'),

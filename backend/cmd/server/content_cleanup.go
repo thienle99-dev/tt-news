@@ -9,7 +9,7 @@ import (
 	translationservice "telegram-news/internal/translation"
 )
 
-const cleanupReviewVersion = "weather-entertainment-v1"
+const cleanupReviewVersion = "title-only-v1"
 
 func (s *server) runContentCleanupWorker(ctx context.Context) {
 	if s.cfg.AIURL == "" || s.cfg.AIKey == "" { log.Print("content cleanup AI review disabled; rule-based spam filtering remains enabled") }
@@ -25,12 +25,12 @@ func (s *server) runContentCleanupWorker(ctx context.Context) {
 }
 
 func (s *server) cleanupJunkArticles(ctx context.Context) {
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,a.summary FROM articles a WHERE (a.content_reviewed_at='' OR a.content_review_version<>?) AND a.summary<>'' AND NOT EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id) AND NOT EXISTS(SELECT 1 FROM featured_topic_articles fta WHERE fta.article_id=a.id) ORDER BY a.published_at ASC,a.id ASC LIMIT ?`, cleanupReviewVersion, s.cfg.ContentCleanupLimit)
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title FROM articles a WHERE (a.content_reviewed_at='' OR a.content_review_version<>?) AND NOT EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id) AND NOT EXISTS(SELECT 1 FROM featured_topic_articles fta WHERE fta.article_id=a.id) ORDER BY a.published_at ASC,a.id ASC LIMIT ?`, cleanupReviewVersion, s.cfg.ContentCleanupLimit)
 	if err != nil { log.Printf("content cleanup candidates: %v", err); return }
 	defer rows.Close()
-	type candidate struct { id int64; title, summary string }
+	type candidate struct { id int64; title string }
 	candidates := []candidate{}
-	for rows.Next() { var item candidate; if err = rows.Scan(&item.id, &item.title, &item.summary); err != nil { log.Printf("content cleanup read: %v", err); return }; candidates = append(candidates, item) }
+	for rows.Next() { var item candidate; if err = rows.Scan(&item.id, &item.title); err != nil { log.Printf("content cleanup read: %v", err); return }; candidates = append(candidates, item) }
 	if err = rows.Err(); err != nil { log.Printf("content cleanup rows: %v", err); return }
 	aiEnabled := s.cfg.AIURL != "" && s.cfg.AIKey != ""
 	client := translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}
@@ -43,7 +43,7 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 			continue
 		}
 		if !aiEnabled { continue }
-		junk, reviewErr := client.IsJunk(ctx, item.title, item.summary)
+		junk, reviewErr := client.IsJunk(ctx, item.title)
 		if reviewErr != nil { log.Printf("content cleanup review %d: %v", item.id, reviewErr); continue }
 		reviewed++
 		if junk {
