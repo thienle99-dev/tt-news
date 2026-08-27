@@ -8,4 +8,6 @@ type Source struct {
 	Name     string
 	URL      string
 	Category string
+	CountryCode string
+	CountryName string
 }

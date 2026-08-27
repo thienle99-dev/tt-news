@@ -10,5 +10,7 @@ var Feeds = []rss.Source{
 		Name:     "SCMP All News",
 		URL:      "https://www.scmp.com/rss/feed",
 		Category: "world",
+		CountryCode: "HK",
+		CountryName: "Hong Kong",
 	},
 }

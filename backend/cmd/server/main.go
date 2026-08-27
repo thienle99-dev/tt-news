@@ -130,6 +130,8 @@ func (s *server) routes() http.Handler {
 		r.Get("/articles", s.listArticles)
 		r.Get("/articles/{id}", s.getArticle)
 		r.Get("/categories", s.categories)
+		r.Get("/sources", s.sources)
+		r.Get("/countries", s.countries)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Get("/saved", s.saved)
@@ -243,13 +245,21 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "c.slug=?")
 		args = append(args, c)
 	}
+	if sourceID := q.Get("source"); sourceID != "" {
+		where = append(where, "s.id=?")
+		args = append(args, sourceID)
+	}
+	if country := q.Get("country"); country != "" {
+		where = append(where, "s.country_code=?")
+		args = append(args, strings.ToUpper(country))
+	}
 	if term := strings.TrimSpace(q.Get("q")); term != "" {
 		where = append(where, "(a.title LIKE ? OR a.description LIKE ? OR a.summary LIKE ?)")
 		like := "%" + term + "%"
 		args = append(args, like, like, like)
 	}
 	args = append(args, limit)
-	sqlq := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, savedJoin, strings.Join(where, " AND "))
+	sqlq := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, savedJoin, strings.Join(where, " AND "))
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -260,7 +270,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a article
 		var saved int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.Category, &a.PublishedAt, &saved); e != nil {
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved); e != nil {
 			jsonErr(w, 500, "could not read articles")
 			return
 		}
@@ -272,7 +282,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a article
-	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.Category, &a.PublishedAt, new(int))
+	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -298,9 +308,25 @@ func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, out)
 }
+func (s *server) sources(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id,name,country_code,country_name FROM sources WHERE enabled=1 ORDER BY name`)
+	if err != nil { jsonErr(w, 500, "could not load sources"); return }
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() { var id int64; var name, code, country string; if err=rows.Scan(&id,&name,&code,&country); err==nil { out=append(out,map[string]any{"id":id,"name":name,"country_code":code,"country_name":country}) } }
+	jsonOut(w, 200, out)
+}
+func (s *server) countries(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.QueryContext(r.Context(), `SELECT DISTINCT country_code,country_name FROM sources WHERE enabled=1 ORDER BY country_name`)
+	if err != nil { jsonErr(w, 500, "could not load countries"); return }
+	defer rows.Close()
+	out := []map[string]string{}
+	for rows.Next() { var code,name string; if err=rows.Scan(&code,&name); err==nil { out=append(out,map[string]string{"code":code,"name":name}) } }
+	jsonOut(w, 200, out)
+}
 func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	rows, e := s.db.QueryContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE sa.user_id=? ORDER BY sa.created_at DESC`, u.ID)
+	rows, e := s.db.QueryContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE sa.user_id=? ORDER BY sa.created_at DESC`, u.ID)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
 		return
@@ -310,7 +336,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a article
 		var x int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.Category, &a.PublishedAt, &x); e != nil {
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &x); e != nil {
 			jsonErr(w, 500, "could not read saved articles")
 			return
 		}

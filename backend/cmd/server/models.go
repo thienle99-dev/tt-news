@@ -14,6 +14,8 @@ type source struct {
 	Name, FeedURL string
 	CategoryID    int64
 	Category      string
+	CountryCode   string
+	CountryName   string
 }
 
 type article struct {
@@ -24,6 +26,9 @@ type article struct {
 	URL         string `json:"url"`
 	ImageURL    string `json:"image_url"`
 	Source      string `json:"source"`
+	SourceID    int64  `json:"source_id"`
+	CountryCode string `json:"country_code"`
+	CountryName string `json:"country_name"`
 	Category    string `json:"category"`
 	PublishedAt string `json:"published_at"`
 	IsSaved     bool   `json:"is_saved"`

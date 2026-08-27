@@ -49,26 +49,34 @@ func migrate(db *sql.DB) error {
 	if _, err = db.Exec("ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT ''"); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 		return err
 	}
+	for _, statement := range []string{
+		"ALTER TABLE sources ADD COLUMN country_code TEXT NOT NULL DEFAULT 'GLOBAL'",
+		"ALTER TABLE sources ADD COLUMN country_name TEXT NOT NULL DEFAULT 'Toàn cầu'",
+	} {
+		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") { return err }
+	}
 
 	categories := []struct{ slug, name string }{
-		{"technology", "Technology"},
-		{"world", "World"},
-		{"business", "Business"},
+		{"technology", "Công nghệ"},
+		{"world", "Thế giới"},
+		{"business", "Kinh doanh"},
+		{"society", "Xã hội"},
 	}
 	for _, category := range categories {
-		if _, err = db.Exec("INSERT OR IGNORE INTO categories(slug,name) VALUES(?,?)", category.slug, category.name); err != nil {
+		if _, err = db.Exec("INSERT INTO categories(slug,name) VALUES(?,?) ON CONFLICT(slug) DO UPDATE SET name=excluded.name", category.slug, category.name); err != nil {
 			return err
 		}
 	}
 
 	sources := []rss.Source{
-		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology"},
-		{Name: "BBC World", URL: "https://feeds.bbci.co.uk/news/world/rss.xml", Category: "world"},
-		{Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business"},
+		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "BBC World", URL: "https://feeds.bbci.co.uk/news/world/rss.xml", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
+		{Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 	}
 	sources = append(sources, scmp.Feeds...)
 	for _, source := range sources {
-		if _, err = db.Exec("INSERT OR IGNORE INTO sources(name,feed_url,category_id) VALUES(?,?,(SELECT id FROM categories WHERE slug=?))", source.Name, source.URL, source.Category); err != nil {
+		if source.CountryCode == "" { source.CountryCode, source.CountryName = "GLOBAL", "Toàn cầu" }
+		if _, err = db.Exec(`INSERT INTO sources(name,feed_url,category_id,country_code,country_name) VALUES(?,?,(SELECT id FROM categories WHERE slug=?),?,?) ON CONFLICT(feed_url) DO UPDATE SET country_code=excluded.country_code,country_name=excluded.country_name`, source.Name, source.URL, source.Category, source.CountryCode, source.CountryName); err != nil {
 			return err
 		}
 	}
