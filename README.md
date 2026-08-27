@@ -76,6 +76,7 @@ Vite mặc định chạy cổng 5173 và proxy `/api` về Go ở 8080, nên fe
 | GET | `/health` | Trạng thái service/database |
 | GET | `/api/articles?category=technology&q=bitcoin&limit=20` | Feed mới nhất |
 | GET | `/api/articles/:id` | Chi tiết bài |
+| POST | `/api/articles/:id/translations/vi` | Dịch và lấy cache tiếng Việt (Telegram auth) |
 | GET | `/api/categories` | Danh sách category |
 | GET | `/api/saved` | Bài đã lưu (Telegram auth) |
 | POST/DELETE | `/api/saved/:id` | Lưu/bỏ lưu (Telegram auth) |
@@ -123,7 +124,7 @@ Cron dùng UTC, chạy ngay khi app khởi động rồi theo lịch năm trư�
 docker compose run --rm news-app /app/news reuters-crawl
 ```
 
-## AI summary và dịch tiếng Việt
+## Dịch tiếng Việt theo yêu cầu
 
 AI chỉ được cấu hình qua `.env`, không có API/UI để đọc hoặc sửa key:
 
@@ -131,8 +132,6 @@ AI chỉ được cấu hình qua `.env`, không có API/UI để đọc hoặc 
 AI_URL=https://api.openai.com/v1/chat/completions
 AI_KEY=your-server-side-api-key
 AI_MODEL=gpt-4o-mini
-AI_TRANSLATE_ENABLED=true
-AI_TRANSLATE_LANGUAGE=Vietnamese
 ```
 
-`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. `AI_TRANSLATE_ENABLED=true` mới cho phép RSS worker gọi AI; `false` (mặc định) hoàn toàn không gọi AI. `AI_TRANSLATE_LANGUAGE` nhận tên ngôn ngữ như `Vietnamese`, `English`, `Japanese` hoặc `French`. Khi được bật và có đủ `AI_URL`/`AI_KEY`, worker gửi nội dung của **bài mới** đến AI để tóm tắt và dịch sang ngôn ngữ đó, rồi lưu vào `articles.summary`. Nếu AI không cấu hình hoặc request lỗi, app vẫn lưu bài với summary gốc từ RSS; không một lỗi AI nào làm worker dừng. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. RSS và Reuters luôn lưu nội dung gốc; AI chỉ được gọi khi một người dùng Telegram đã xác thực mở chi tiết bài ở giao diện tiếng Việt. Lần dịch đầu lưu title, description và summary vào SQLite theo bài/ngôn ngữ; các lần sau, kể cả của người dùng khác, dùng lại cache này. Nếu AI chưa cấu hình hoặc trả lỗi, app giữ nội dung gốc và cho phép thử lại. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.

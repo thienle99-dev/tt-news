@@ -2,6 +2,7 @@ interface TelegramWebApp {
   initData: string
   colorScheme: 'light' | 'dark'
   themeParams: Record<string, string>
+	initDataUnsafe?: { user?: { language_code?: string } }
   ready(): void
   expand(): void
   openLink(url: string): void
