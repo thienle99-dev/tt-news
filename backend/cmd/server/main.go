@@ -24,6 +24,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mmcdole/gofeed"
@@ -43,16 +44,13 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	if len(os.Args) > 1 && os.Args[1] == "reuters-crawl" {
-		runReutersOnce(cfg)
+	if len(os.Args) > 1 && os.Args[1] == "rss-fetch" {
+		filter, since := parseRSSFetchArgs(os.Args[2:])
+		runRSSOnce(cfg, filter, since)
 		return
 	}
-	if len(os.Args) > 1 && os.Args[1] == "rss-fetch" {
-		filter := ""
-		if len(os.Args) > 2 {
-			filter = os.Args[2]
-		}
-		runRSSOnce(cfg, filter)
+	if len(os.Args) > 1 && os.Args[1] == "translate-all-vi" {
+		runTranslateAllVietnamese(cfg)
 		return
 	}
 	db, err := openDB(cfg.DBPath)
@@ -67,9 +65,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go app.runRSS(ctx)
-	if cfg.ReutersCrawlEnabled {
-		go app.runReutersCron(ctx)
-	}
+	go app.runTranslationWorker(ctx)
 	if cfg.BotToken != "" && cfg.MiniAppURL != "" {
 		go app.runBot(ctx)
 	} else {
@@ -89,23 +85,44 @@ func main() {
 	}
 }
 
-func runReutersOnce(cfg config) {
-	if strings.TrimSpace(cfg.ReutersUserAgent) == "" {
-		log.Fatal("set REUTERS_CRAWLER_USER_AGENT before running reuters-crawl")
+func parseRSSFetchArgs(args []string) (string, time.Time) {
+	filter := ""
+	var since time.Time
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--days" || arg == "--since" {
+			index++
+			if index == len(args) {
+				log.Fatalf("%s requires a value", arg)
+			}
+			arg += "=" + args[index]
+		}
+		switch {
+		case strings.HasPrefix(arg, "--days="):
+			days, err := strconv.Atoi(strings.TrimPrefix(arg, "--days="))
+			if err != nil || days < 1 || days > 30 {
+				log.Fatal("rss-fetch --days accepts a value from 1 to 30")
+			}
+			since = time.Now().UTC().AddDate(0, 0, -days)
+		case strings.HasPrefix(arg, "--since="):
+			value := strings.TrimPrefix(arg, "--since=")
+			parsed, err := time.Parse("2006-01-02", value)
+			if err != nil {
+				log.Fatal("rss-fetch --since must use YYYY-MM-DD")
+			}
+			since = parsed.UTC()
+		case strings.HasPrefix(arg, "--"):
+			log.Fatalf("unknown rss-fetch option %q", arg)
+		case filter == "":
+			filter = arg
+		default:
+			log.Fatal("usage: rss-fetch [source-filter] [--days 1-30 | --since YYYY-MM-DD]")
+		}
 	}
-	db, err := openDB(cfg.DBPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-	if err = migrate(db); err != nil {
-		log.Fatal(err)
-	}
-	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
-	app.crawlReuters(context.Background(), time.Now().UTC())
+	return filter, since
 }
 
-func runRSSOnce(cfg config, filter string) {
+func runRSSOnce(cfg config, filter string, since time.Time) {
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
@@ -115,7 +132,7 @@ func runRSSOnce(cfg config, filter string) {
 		log.Fatal(err)
 	}
 	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
-	app.fetchSources(context.Background(), filter)
+	app.fetchSources(context.Background(), filter, since)
 }
 
 type server struct {
@@ -243,6 +260,10 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	if limit > 100 {
 		limit = 100
 	}
+	offset := intEnvFrom(q.Get("offset"), 0)
+	if offset < 0 {
+		offset = 0
+	}
 	u, logged := s.optionalUser(r)
 	savedJoin := "0"
 	args := []any{}
@@ -256,7 +277,9 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = append(args, language)
 	}
-	where := []string{"1=1"}
+	// A disabled source must not leak into the feed, even when its articles were
+	// imported before the source was disabled.
+	where := []string{"s.enabled=1"}
 	if c := q.Get("category"); c != "" {
 		where = append(where, "c.slug=?")
 		args = append(args, c)
@@ -274,8 +297,8 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		like := "%" + term + "%"
 		args = append(args, like, like, like)
 	}
-	args = append(args, limit)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, title, description, summary, savedJoin, translationJoin, strings.Join(where, " AND "))
+	args = append(args, limit, offset)
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, title, description, summary, savedJoin, translationJoin, strings.Join(where, " AND "))
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -299,7 +322,7 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a article
 	var imageJSON string
-	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
+	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -377,7 +400,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = []any{language, u.ID}
 	}
-	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
 	rows, e := s.db.QueryContext(r.Context(), query, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
@@ -485,7 +508,7 @@ func intEnvFrom(v string, d int) int {
 }
 
 func (s *server) runRSS(ctx context.Context) {
-	s.fetchSources(ctx, "")
+	s.fetchSources(ctx, "", time.Time{})
 	t := time.NewTicker(s.cfg.RSSInterval)
 	defer t.Stop()
 	for {
@@ -493,11 +516,29 @@ func (s *server) runRSS(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s.fetchSources(ctx, "")
+			s.fetchSources(ctx, "", time.Time{})
 		}
 	}
 }
-func (s *server) fetchSources(ctx context.Context, nameFilter string) {
+
+type rssFetchResult struct {
+	FeedItems, Inserted, Existing, BeforeSince, Invalid, Summarized, SummaryFailed, TranslationQueued int
+	Duration                                                                                          time.Duration
+}
+
+func (result *rssFetchResult) add(other rssFetchResult) {
+	result.FeedItems += other.FeedItems
+	result.Inserted += other.Inserted
+	result.Existing += other.Existing
+	result.BeforeSince += other.BeforeSince
+	result.Invalid += other.Invalid
+	result.Summarized += other.Summarized
+	result.SummaryFailed += other.SummaryFailed
+	result.TranslationQueued += other.TranslationQueued
+	result.Duration += other.Duration
+}
+
+func (s *server) fetchSources(ctx context.Context, nameFilter string, since time.Time) {
 	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1`
 	args := []any{}
 	if strings.TrimSpace(nameFilter) != "" {
@@ -525,42 +566,62 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string) {
 	}
 	rows.Close()
 
-	log.Printf("rss crawl started (filter=%q)", nameFilter)
+	sinceLabel := "any publication date"
+	if !since.IsZero() {
+		sinceLabel = since.Format("2006-01-02") + " UTC"
+	}
+	log.Printf("rss crawl started: sources=%d filter=%q since=%s", len(sources), nameFilter, sinceLabel)
 	processed := 0
-	inserted := 0
+	total := rssFetchResult{}
+	crawlStarted := time.Now()
 	for _, src := range sources {
 		processed++
-		log.Printf("rss [%d] fetching %s", processed, src.Name)
-		created, err := s.fetchSource(ctx, src)
+		log.Printf("rss [%d/%d] fetching %s (%s)", processed, len(sources), src.Name, src.FeedURL)
+		result, err := s.fetchSource(ctx, src, since)
 		if err != nil {
 			e = err
-			log.Printf("rss %s: %v", src.Name, e)
+			log.Printf("rss [%d/%d] %s failed after %s: %v", processed, len(sources), src.Name, result.Duration.Round(time.Millisecond), e)
 			continue
 		}
-		inserted += created
-		log.Printf("rss [%d] %s: %d new article(s)", processed, src.Name, created)
+		total.add(result)
+		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", processed, len(sources), src.Name, result.Duration.Round(time.Millisecond), result.FeedItems, result.Inserted, result.Existing, result.BeforeSince, result.Invalid, result.Summarized, result.SummaryFailed, result.TranslationQueued)
 	}
-	log.Printf("rss crawl finished: %d source(s), %d new article(s)", processed, inserted)
+	log.Printf("rss crawl finished in %s: sources=%d feed-items=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", time.Since(crawlStarted).Round(time.Millisecond), processed, total.FeedItems, total.Inserted, total.Existing, total.BeforeSince, total.Invalid, total.Summarized, total.SummaryFailed, total.TranslationQueued)
 }
-func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
+func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (result rssFetchResult, err error) {
+	started := time.Now()
+	defer func() { result.Duration = time.Since(started) }()
 	feed, e := s.feed.ParseURLWithContext(src.FeedURL, ctx)
 	if e != nil {
-		return 0, e
+		return result, e
 	}
-	inserted := 0
-	for _, item := range feed.Items {
+	result.FeedItems = len(feed.Items)
+	for index, item := range feed.Items {
 		link := normalizeURL(item.Link)
 		title := strings.TrimSpace(item.Title)
 		if link == "" || title == "" {
+			result.Invalid++
 			continue
 		}
 		var exists int
 		e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE url=?", link).Scan(&exists)
 		if e == nil {
+			result.Existing++
 			continue
 		}
 		if !errors.Is(e, sql.ErrNoRows) {
-			return inserted, e
+			return result, e
+		}
+		titleFingerprint := articleFingerprint(title, 20)
+		if titleFingerprint != "" {
+			e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE title_fingerprint=?", titleFingerprint).Scan(&exists)
+			if e == nil {
+				result.Existing++
+				continue
+			}
+			if !errors.Is(e, sql.ErrNoRows) {
+				return result, e
+			}
 		}
 		published := time.Now().UTC()
 		if item.PublishedParsed != nil {
@@ -568,6 +629,11 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		} else if item.UpdatedParsed != nil {
 			published = *item.UpdatedParsed
 		}
+		if !since.IsZero() && published.Before(since) {
+			result.BeforeSince++
+			continue
+		}
+		log.Printf("rss %s article [%d/%d] processing: %s", src.Name, index+1, len(feed.Items), link)
 		image := ""
 		if item.Image != nil {
 			image = item.Image.URL
@@ -584,21 +650,46 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		} else if extracted != "" {
 			body = extracted
 		}
+		contentFingerprint := articleFingerprint(body, 200)
+		if contentFingerprint != "" {
+			e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE content_fingerprint=?", contentFingerprint).Scan(&exists)
+			if e == nil {
+				result.Existing++
+				continue
+			}
+			if !errors.Is(e, sql.ErrNoRows) {
+				return result, e
+			}
+		}
 		summary := ""
 		if brief, summaryErr := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(ctx, title, body); summaryErr != nil {
+			result.SummaryFailed++
 			log.Printf("rss summary %s: %v", link, summaryErr)
 		} else {
 			title, summary = brief.Title, brief.Summary
+			result.Summarized++
 		}
-		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, "[]", published.UTC().Format(time.RFC3339))
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, "[]", published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
-			return inserted, e
+			return result, e
 		}
-		if count, _ := result.RowsAffected(); count > 0 {
-			inserted += int(count)
+		if count, _ := dbResult.RowsAffected(); count > 0 {
+			result.Inserted += int(count)
+			if s.cfg.RSSTranslateVietnamese && summary != "" {
+				articleID, idErr := dbResult.LastInsertId()
+				if idErr != nil {
+					log.Printf("rss translation queue id %s: %v", link, idErr)
+					continue
+				}
+				if _, queueErr := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code) VALUES(?,'vi')`, articleID); queueErr != nil {
+					log.Printf("rss translation queue %s: %v", link, queueErr)
+				} else {
+					result.TranslationQueued++
+				}
+			}
 		}
 	}
-	return inserted, nil
+	return result, nil
 }
 func normalizeURL(raw string) string {
 	u, e := url.Parse(strings.TrimSpace(raw))
@@ -609,6 +700,23 @@ func normalizeURL(raw string) string {
 	u.Scheme = strings.ToLower(u.Scheme)
 	u.Host = strings.ToLower(u.Host)
 	return u.String()
+}
+
+func articleFingerprint(value string, minimumLength int) string {
+	var normalized strings.Builder
+	for _, char := range strings.ToLower(value) {
+		if unicode.IsLetter(char) || unicode.IsDigit(char) {
+			normalized.WriteRune(char)
+		} else {
+			normalized.WriteByte(' ')
+		}
+	}
+	value = strings.Join(strings.Fields(normalized.String()), " ")
+	if len([]rune(value)) < minimumLength {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", digest)
 }
 
 func (s *server) runBot(ctx context.Context) {

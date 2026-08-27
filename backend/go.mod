@@ -6,7 +6,6 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/mmcdole/gofeed v1.3.0
-	github.com/robfig/cron/v3 v3.0.1
 	modernc.org/sqlite v1.36.0
 )
 

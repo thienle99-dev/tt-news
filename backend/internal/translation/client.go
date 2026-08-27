@@ -53,17 +53,34 @@ func (c Client) Summarize(ctx context.Context, title, body string) (Fields, erro
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return Fields{}, fmt.Errorf("summary endpoint returned %s", res.Status)
 	}
-	response, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	rawResponse, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return Fields{}, err
 	}
-	content, err := completionContent(response)
+	content, err := completionContent(rawResponse)
 	if err != nil {
 		return Fields{}, err
 	}
-	var result Fields
-	if err = json.Unmarshal([]byte(content), &result); err != nil {
+	var response struct {
+		Title   string          `json:"title"`
+		Summary json.RawMessage `json:"summary"`
+	}
+	if err = json.Unmarshal([]byte(content), &response); err != nil {
 		return Fields{}, fmt.Errorf("decode summary: %w", err)
+	}
+	result := Fields{Title: response.Title}
+	if err = json.Unmarshal(response.Summary, &result.Summary); err != nil {
+		var points []string
+		if arrayErr := json.Unmarshal(response.Summary, &points); arrayErr != nil {
+			return Fields{}, fmt.Errorf("decode summary: summary must be a string or list: %w", err)
+		}
+		cleaned := make([]string, 0, len(points))
+		for _, point := range points {
+			if point = strings.TrimSpace(point); point != "" {
+				cleaned = append(cleaned, "• "+point)
+			}
+		}
+		result.Summary = strings.Join(cleaned, "\n")
 	}
 	result.Title, result.Summary = strings.TrimSpace(result.Title), strings.TrimSpace(result.Summary)
 	if result.Title == "" || result.Summary == "" {
@@ -76,7 +93,7 @@ func (c Client) Vietnamese(ctx context.Context, fields Fields) (Fields, error) {
 	if c.URL == "" || c.APIKey == "" {
 		return Fields{}, errors.New("translation service is not configured")
 	}
-	instruction := `Translate the supplied news fields from English to Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts.
+	instruction := `Translate the supplied news fields into Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts.
 
 Your entire response MUST be one valid JSON object and nothing else. The first character must be { and the last character must be }. Do not use Markdown, code fences, prose, labels, or explanations. Use exactly these string keys: "title", "description", "summary". Keep empty input fields as empty strings.
 

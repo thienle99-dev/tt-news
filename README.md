@@ -11,7 +11,6 @@ MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go 
 - `database.go`: SQLite connection, pragmas, migration và RSS seed.
 - `models.go`: DTO và model nội bộ dùng chung.
 - `migrations/` và `static/`: tài nguyên được embed vào binary; Docker copy React build vào `static/` trước khi compile.
-- `internal/crawler/`: interface `Job` và cron scheduler chung cho các crawler không phải RSS.
 - `internal/crawlers/<source>/`: cấu hình và parser riêng theo từng nguồn; hiện SCMP RSS nằm ở `internal/crawlers/scmp/`.
 - `internal/crawlers/rss/`: contract `rss.Source` chung; mọi site RSS chỉ khai báo `Name`, `URL`, `Category`, sau đó dùng chung worker fetch/parse/dedupe.
 
@@ -99,7 +98,7 @@ VALUES ('Example Tech', 'https://example.com/feed.xml',
 
 Worker chạy lúc khởi động và mỗi `RSS_FETCH_INTERVAL` (mặc định `10m`). URL là unique nên bài cũ không được chèn lại; lỗi một feed chỉ được log và không ảnh hưởng app hoặc feed còn lại.
 
-Với mỗi bài RSS mới, worker cũng thử tải trang đích để lưu nội dung đầy đủ dạng plain text vào `description`; `summary` vẫn giữ mô tả ngắn từ RSS. Có thể đặt `RSS_CONTENT_USER_AGENT` để nhận diện crawler. Nếu trang là paywall, non-HTML, quá lớn hoặc trả lỗi, bài vẫn được lưu với nội dung RSS làm fallback; bài đã tồn tại không được tải lại.
+Với mỗi bài RSS mới, worker tạo một bản tóm tắt AI và giữ link về bài gốc. Có thể đặt `RSS_CONTENT_USER_AGENT` để nhận diện request lấy ngữ cảnh cho việc tóm tắt.
 
 RSS tổng hợp SCMP `https://www.scmp.com/rss/feed` được seed mặc định, để lấy tin mới từ toàn site. Có thể thêm feed theo category trên [SCMP RSS](https://www.scmp.com/rss); bài xuất hiện ở nhiều feed vẫn chỉ được lưu một lần nhờ unique URL.
 
@@ -110,27 +109,33 @@ docker compose build news-app
 docker compose run --rm --no-deps news-app /app/news rss-fetch scmp
 ```
 
-Để fetch toàn bộ RSS source đang bật, bỏ filter cuối: `docker compose run --rm --no-deps news-app /app/news rss-fetch`.
-
-## Reuters sitemap crawler (chỉ khi được cho phép)
-
-Reuters crawler không dùng RSS. Khi đã có quyền crawl từ Reuters, bật worker sitemap HTML bằng `.env`:
-
-```env
-REUTERS_CRAWL_ENABLED=true
-REUTERS_CRON=15 */2 * * *
-REUTERS_CRAWLER_USER_AGENT=MyNewsCrawler/1.0 (+contact@example.com)
-```
-
-Cron dùng UTC, chạy ngay khi app khởi động rồi theo lịch năm trường `minute hour day-of-month month day-of-week`. Worker lấy `/sitemap/YYYY-MM/DD/page/`, chỉ theo URL article Reuters, ưu tiên JSON-LD `NewsArticle` và fallback sang thẻ `<article>`. URL được dedupe trong SQLite trước khi tải bài; 401, 403 hoặc 429 được coi là access/rate-limit failure và không có cơ chế bypass. Để mặc định `REUTERS_CRAWL_ENABLED=false` nếu chưa được Reuters cho phép.
-
-Để chạy một lượt thủ công (không bật HTTP server hay cron), giữ `REUTERS_CRAWLER_USER_AGENT` trong `.env` rồi dùng:
+Để fetch toàn bộ RSS source đang bật:
 
 ```bash
-docker compose run --rm news-app /app/news reuters-crawl
+docker compose run --rm --no-deps news-app /app/news rss-fetch
 ```
 
+Chỉ lấy các bài trong số ngày gần đây (1–30 ngày):
+
+```bash
+docker compose run --rm --no-deps news-app /app/news rss-fetch --days 7
+```
+
+Hoặc lấy bài có ngày xuất bản từ một ngày cụ thể (UTC):
+
+```bash
+docker compose run --rm --no-deps news-app /app/news rss-fetch --since 2026-08-20
+```
+
+Có thể kết hợp filter nguồn và ngày, ví dụ: `docker compose run --rm --no-deps news-app /app/news rss-fetch bbc --days 3`.
+
 ## Dịch tiếng Việt theo yêu cầu
+
+Để dịch và cache tiếng Việt cho toàn bộ bài chưa có bản dịch (chỉ title/tóm tắt), chạy:
+
+```bash
+docker compose run --rm --no-deps news-app /app/news translate-all-vi
+```
 
 AI chỉ được cấu hình qua `.env`, không có API/UI để đọc hoặc sửa key:
 
@@ -140,4 +145,4 @@ AI_KEY=your-server-side-api-key
 AI_MODEL=gpt-4o-mini
 ```
 
-`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. RSS và Reuters luôn lưu nội dung gốc; AI chỉ được gọi khi một người dùng Telegram đã xác thực mở chi tiết bài ở giao diện tiếng Việt. Lần dịch đầu lưu title, description và summary vào SQLite theo bài/ngôn ngữ; các lần sau, kể cả của người dùng khác, dùng lại cache này. Nếu AI chưa cấu hình hoặc trả lỗi, app giữ nội dung gốc và cho phép thử lại. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
+`AI_URL` dùng chuẩn OpenAI-compatible Chat Completions. RSS tạo tóm tắt khi nhập bài; bản dịch title và tóm tắt được lưu trong SQLite theo bài/ngôn ngữ và dùng lại từ cache. Nếu AI chưa cấu hình hoặc trả lỗi, app giữ metadata RSS và link bài gốc. Thay đổi `.env` cần restart container: `docker compose up -d --force-recreate`.
