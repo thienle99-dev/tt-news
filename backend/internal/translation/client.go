@@ -20,6 +20,83 @@ type Fields struct {
 	Title, Description, Summary string
 }
 
+type FeaturedCandidate struct {
+	ID          int64  `json:"id"`
+	Title       string `json:"title"`
+	Summary     string `json:"summary"`
+	Source      string `json:"source"`
+	Category    string `json:"category"`
+	PublishedAt string `json:"published_at"`
+}
+
+type FeaturedTopic struct {
+	Title      string  `json:"title"`
+	Summary    string  `json:"summary"`
+	ArticleIDs []int64 `json:"article_ids"`
+}
+
+type FeaturedBrief struct {
+	Title  string          `json:"title"`
+	Intro  string          `json:"intro"`
+	Topics []FeaturedTopic `json:"topics"`
+}
+
+func (c Client) Featured(ctx context.Context, candidates []FeaturedCandidate) (FeaturedBrief, error) {
+	instruction := `You are the editor of an international news briefing. Group the supplied articles into 5 to 8 distinct, important news events. Return only JSON with title, intro, and topics. Each topic needs title, summary, and article_ids. Summary must be concise and factual. Each topic must cite 1 to 3 supplied article IDs, never invent IDs, and no ID may appear in more than one topic. Prefer diverse sources.`
+	return c.featuredRequest(ctx, instruction, candidates)
+}
+
+func (c Client) FeaturedVietnamese(ctx context.Context, brief FeaturedBrief) (FeaturedBrief, error) {
+	instruction := `Translate this featured news briefing into natural Vietnamese. Preserve article_ids exactly. Return only JSON with title, intro, and topics; every topic must have title, summary, and article_ids. Do not add, remove, or reorder topics or IDs.`
+	return c.featuredRequest(ctx, instruction, brief)
+}
+
+func (c Client) featuredRequest(ctx context.Context, instruction string, input any) (FeaturedBrief, error) {
+	if c.URL == "" || c.APIKey == "" {
+		return FeaturedBrief{}, errors.New("translation service is not configured")
+	}
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("data:\n%s", mustJSON(input))}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	data, err := json.Marshal(payload)
+	if err != nil { return FeaturedBrief{}, err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	if err != nil { return FeaturedBrief{}, err }
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := c.HTTPClient
+	if client == nil { client = &http.Client{Timeout: 45 * time.Second} }
+	res, err := client.Do(req)
+	if err != nil { return FeaturedBrief{}, err }
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 { return FeaturedBrief{}, fmt.Errorf("featured endpoint returned %s", res.Status) }
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil { return FeaturedBrief{}, err }
+	content, err := completionContent(body)
+	if err != nil { return FeaturedBrief{}, err }
+	var brief FeaturedBrief
+	if err = json.Unmarshal([]byte(content), &brief); err != nil { return FeaturedBrief{}, fmt.Errorf("decode featured briefing: %w", err) }
+	brief.Title, brief.Intro = strings.TrimSpace(brief.Title), strings.TrimSpace(brief.Intro)
+	return brief, nil
+}
+
+func mustJSON(value any) string { data, _ := json.Marshal(value); return string(data) }
+
+func (c Client) IsJunk(ctx context.Context, title, summary string) (bool, error) {
+	if c.URL == "" || c.APIKey == "" { return false, errors.New("translation service is not configured") }
+	instruction := `Classify whether this RSS item is unsuitable for an international news feed. Mark junk=true for weather forecasts or routine weather updates, advertisements or sponsored PR, podcasts/videos/audio-only posts, photo galleries, entertainment, celebrity, lifestyle, fashion, food, travel, or extremely thin or malformed items. Do not mark ordinary reporting, analysis, opinion, public-safety weather emergencies, culture with public significance, or sports news as junk. Return only JSON: {"junk":true|false}.`
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\nsummary: %s", title, summary)}}, "temperature": 0, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	data, err := json.Marshal(payload); if err != nil { return false, err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data))); if err != nil { return false, err }
+	req.Header.Set("Authorization", "Bearer "+c.APIKey); req.Header.Set("Content-Type", "application/json")
+	client := c.HTTPClient; if client == nil { client = &http.Client{Timeout: 30 * time.Second} }
+	res, err := client.Do(req); if err != nil { return false, err }; defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 { return false, fmt.Errorf("content review endpoint returned %s", res.Status) }
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20)); if err != nil { return false, err }
+	content, err := completionContent(body); if err != nil { return false, err }
+	var result struct { Junk bool `json:"junk"` }
+	if err = json.Unmarshal([]byte(content), &result); err != nil { return false, fmt.Errorf("decode content review: %w", err) }
+	return result.Junk, nil
+}
+
 // Summarize rewrites a source article into an original title and a short 3-5 point brief.
 func (c Client) Summarize(ctx context.Context, title, body string) (Fields, error) {
 	if c.URL == "" || c.APIKey == "" {

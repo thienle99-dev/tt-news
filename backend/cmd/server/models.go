@@ -41,6 +41,24 @@ type translation struct {
 	Summary     string `json:"summary"`
 }
 
+type featuredTopic struct {
+	ID       int64     `json:"id"`
+	Position int       `json:"position"`
+	Title    string    `json:"title"`
+	Summary  string    `json:"summary"`
+	Articles []article `json:"articles"`
+}
+
+type featuredBrief struct {
+	ID          int64           `json:"id"`
+	GeneratedAt string          `json:"generated_at"`
+	WindowStart string          `json:"window_start"`
+	WindowEnd   string          `json:"window_end"`
+	Title       string          `json:"title"`
+	Intro       string          `json:"intro"`
+	Topics      []featuredTopic `json:"topics"`
+}
+
 type ctxKey string
 
 const userKey ctxKey = "user"

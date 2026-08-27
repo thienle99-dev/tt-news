@@ -39,7 +39,7 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
@@ -58,6 +58,8 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE sources ADD COLUMN country_name TEXT NOT NULL DEFAULT 'Toàn cầu'",
 		"ALTER TABLE articles ADD COLUMN title_fingerprint TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_fingerprint TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN content_reviewed_at TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN content_review_version TEXT NOT NULL DEFAULT ''",
 	} {
 		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return err

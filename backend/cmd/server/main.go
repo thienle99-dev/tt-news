@@ -66,6 +66,8 @@ func main() {
 	defer cancel()
 	go app.runRSS(ctx)
 	go app.runTranslationWorker(ctx)
+	go app.runFeaturedWorker(ctx)
+	go app.runContentCleanupWorker(ctx)
 	if cfg.BotToken != "" && cfg.MiniAppURL != "" {
 		go app.runBot(ctx)
 	} else {
@@ -140,6 +142,7 @@ type server struct {
 	cfg           config
 	feed          *gofeed.Parser
 	translationMu sync.Mutex
+	featuredMu    sync.Mutex
 }
 
 func (s *server) routes() http.Handler {
@@ -153,6 +156,7 @@ func (s *server) routes() http.Handler {
 		r.Get("/categories", s.categories)
 		r.Get("/sources", s.sources)
 		r.Get("/countries", s.countries)
+		r.Get("/featured", s.featured)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
@@ -509,6 +513,7 @@ func intEnvFrom(v string, d int) int {
 
 func (s *server) runRSS(ctx context.Context) {
 	s.fetchSources(ctx, "", time.Time{})
+	s.generateFeaturedBrief(ctx)
 	t := time.NewTicker(s.cfg.RSSInterval)
 	defer t.Stop()
 	for {
@@ -517,6 +522,7 @@ func (s *server) runRSS(ctx context.Context) {
 			return
 		case <-t.C:
 			s.fetchSources(ctx, "", time.Time{})
+			s.generateFeaturedBrief(ctx)
 		}
 	}
 }

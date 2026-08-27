@@ -10,8 +10,11 @@ type config struct {
 	Port, DBPath, BotToken, MiniAppURL string
 	AIURL, AIKey, AIModel              string
 	RSSInterval, AuthMaxAge            time.Duration
+	FeaturedBriefInterval, FeaturedBriefWindow time.Duration
+	ContentCleanupInterval                 time.Duration
 	RSSContentUserAgent                string
 	RSSFetchWorkers                    int
+	ContentCleanupLimit                 int
 	DevAuth                            bool
 	RSSTranslateVietnamese             bool
 	DevUserID                          int64
@@ -28,6 +31,10 @@ func loadConfig() config {
 		AIModel:                env("AI_MODEL", "gpt-4o-mini"),
 		RSSTranslateVietnamese: env("RSS_TRANSLATE_VI", "true") == "true",
 		RSSInterval:            duration("RSS_FETCH_INTERVAL", 10*time.Minute),
+		FeaturedBriefInterval:  duration("FEATURED_BRIEF_INTERVAL", 6*time.Hour),
+		FeaturedBriefWindow:    duration("FEATURED_BRIEF_WINDOW", 24*time.Hour),
+		ContentCleanupInterval: duration("CONTENT_CLEANUP_INTERVAL", 24*time.Hour),
+		ContentCleanupLimit:    positiveIntEnv("CONTENT_CLEANUP_LIMIT", 100),
 		RSSContentUserAgent:    env("RSS_CONTENT_USER_AGENT", "TelegramNewsRSSBot/1.0"),
 		RSSFetchWorkers:        positiveIntEnv("RSS_FETCH_WORKERS", 8),
 		AuthMaxAge:             duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
