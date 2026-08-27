@@ -97,7 +97,8 @@ func (c Client) IsJunk(ctx context.Context, title string) (bool, error) {
 	return result.Junk, nil
 }
 
-// Summarize rewrites a source article into an original title and a short 3-5 point brief.
+// Summarize rewrites a source article into an original title and a detailed,
+// content-proportional brief.
 func (c Client) Summarize(ctx context.Context, title, body string) (Fields, error) {
 	if c.URL == "" || c.APIKey == "" {
 		return Fields{}, errors.New("translation service is not configured")
@@ -105,7 +106,17 @@ func (c Client) Summarize(ctx context.Context, title, body string) (Fields, erro
 	if len(body) > 12000 {
 		body = body[:12000]
 	}
-	instruction := `You are a careful news editor. Create an original, factual brief from the supplied article text, not merely from its headline. First identify the central event; then synthesize only the 3 to 5 most consequential, supported facts. Cover what happened, who is involved, when/where it happened, and the practical impact or next development when the source provides them. Preserve important names, numbers, dates, and attribution. Distinguish confirmed facts from claims or projections. Do not add outside knowledge, speculation, background not present in the text, or details that cannot be supported by the article. Omit trivia and repeated points. Do not copy phrases longer than necessary. Return one JSON object only with string keys "title" and "summary". Format summary as concise bullet points.`
+	instruction := `You are a meticulous news editor. Create an original, self-contained, factual brief from the supplied full article, not merely from its headline.
+
+Work silently in two passes. First build a fact inventory from the source: the central event or announcement; the people, organizations, and products involved; date and location; price and availability; specifications, measurements, materials, performance figures, and test conditions; notable features; practical benefits or consequences; comparisons, limitations, and what happens next. Then select and organize the facts that let a reader understand the article without opening the source.
+
+The amount of detail must follow the source. For a substantive article, write 6 to 10 bullets and approximately 140 to 220 words in total. For a genuinely short or sparse article, use 4 to 6 bullets and fewer words rather than padding or inventing information. Each bullet should normally contain 1 to 2 complete sentences and combine closely related facts into a useful point; do not reduce a bullet to a label or a single isolated number. Begin with a clear overview of what happened, then move through the most relevant supporting detail in a logical order.
+
+Adapt coverage to the subject. For a product launch, include, when supported: what the product is and where it is launching; campaign or sale dates; local price and any converted price; capacity or dimensions; construction and materials; measured or claimed performance with temperatures or duration; opening, locking, sealing, cleaning, safety, and portability features; colors or variants; and any stated availability limits. For other news, prioritize who did what, when and where, the evidence or key figures, why it matters, the response from affected parties, and the next known step.
+
+Preserve important names, numbers, units, dates, prices, qualifications, comparisons, and attribution. Make clear when a figure or benefit is a company claim, estimate, projection, allegation, or independently established fact. Do not add outside knowledge, speculation, generic advice, background absent from the article, or unsupported conclusions. Do not repeat the same fact in multiple bullets, include promotional filler, or copy distinctive phrases longer than necessary.
+
+Write a specific, neutral title that accurately reflects the central event without clickbait. Return exactly one valid JSON object and nothing else, using only the string keys "title" and "summary". The summary must be a single string whose bullets are separated by newline characters and each begin with "• ".`
 	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("source headline: %s\n\noriginal article text:\n%s", title, body)}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload)
 	if err != nil {
