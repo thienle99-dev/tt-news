@@ -7,7 +7,7 @@ import (
 )
 
 type config struct {
-	Port, DBPath, BotToken, MiniAppURL         string
+	Port, DBPath, BotToken, MiniAppURL, AdminToken string
 	GoldRatesURL                               string
 	AIURL, AIKey, AIModel                      string
 	RSSInterval, AuthMaxAge                    time.Duration
@@ -30,6 +30,7 @@ func loadConfig() config {
 		DBPath:                 env("DATABASE_PATH", "/data/news.db"),
 		BotToken:               os.Getenv("TELEGRAM_BOT_TOKEN"),
 		MiniAppURL:             os.Getenv("MINI_APP_URL"),
+		AdminToken:             os.Getenv("ADMIN_TOKEN"),
 		GoldRatesURL:           env("GOLD_RATES_URL", goldRatesURL),
 		AIURL:                  os.Getenv("AI_URL"),
 		AIKey:                  os.Getenv("AI_KEY"),

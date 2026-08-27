@@ -21,6 +21,8 @@ type Filters = {
   source: string;
   country: string;
   query: string;
+  period: string;
+  sort: string;
 };
 const categories: Record<string, Record<Locale, string>> = {
   technology: { en: "Technology", vi: "Công nghệ" },
@@ -65,6 +67,13 @@ const text = {
     feedbackThanks: "Thanks — your feedback was recorded.",
     originalContent: "Review original text",
     sortSaved: "Sort saved",
+    time: "Time",
+    allTime: "Any time",
+    last24Hours: "Last 24 hours",
+    last7Days: "Last 7 days",
+    sort: "Sort",
+    oldest: "Oldest",
+    relevance: "Most relevant",
     savedNewest: "Recently saved",
     savedOldest: "Oldest saved",
     publishedNewest: "Newest published",
@@ -142,6 +151,13 @@ const text = {
     feedbackThanks: "Cảm ơn — phản hồi của bạn đã được ghi nhận.",
     originalContent: "Xem nguyên văn liên quan",
     sortSaved: "Sắp xếp bài đã lưu",
+    time: "Thời gian",
+    allTime: "Mọi thời điểm",
+    last24Hours: "24 giờ qua",
+    last7Days: "7 ngày qua",
+    sort: "Sắp xếp",
+    oldest: "Cũ nhất",
+    relevance: "Liên quan nhất",
     savedNewest: "Mới lưu gần đây",
     savedOldest: "Lưu lâu nhất",
     publishedNewest: "Mới xuất bản",
@@ -214,16 +230,20 @@ const filtersFromURL = (): Filters => {
     source: params.get("source") || "",
     country: params.get("country") || "",
     query: params.get("q") || "",
+    period: params.get("period") || "",
+    sort: params.get("sort") || "newest",
   };
 };
 const replaceFiltersURL = (filter: Filters) => {
   const url = new URL(window.location.href);
-  for (const key of ["category", "source", "country", "q"])
+  for (const key of ["category", "source", "country", "q", "period", "sort"])
     url.searchParams.delete(key);
   if (filter.category) url.searchParams.set("category", filter.category);
   if (filter.source) url.searchParams.set("source", filter.source);
   if (filter.country) url.searchParams.set("country", filter.country);
   if (filter.query) url.searchParams.set("q", filter.query);
+  if (filter.period) url.searchParams.set("period", filter.period);
+  if (filter.sort && filter.sort !== "newest") url.searchParams.set("sort", filter.sort);
   window.history.replaceState(
     window.history.state,
     "",
@@ -970,6 +990,8 @@ function Home({
         ...(filter.source && { source: filter.source }),
         ...(filter.country && { country: filter.country }),
         ...(filter.query && { q: filter.query }),
+        ...(!saved && filter.period && { period: filter.period }),
+        ...(!saved && filter.sort && { sort: filter.sort }),
         ...(hideRead && { hide_read: "1" }),
         ...(saved && savedFolder && { folder: savedFolder }),
         ...(saved && savedTag && { tag: savedTag }),
@@ -998,7 +1020,9 @@ function Home({
         current.category === next.category &&
         current.source === next.source &&
         current.country === next.country &&
-        current.query === next.query
+        current.query === next.query &&
+        current.period === next.period &&
+        current.sort === next.sort
           ? current
           : next,
       );

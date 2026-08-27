@@ -209,6 +209,13 @@ func (s *server) routes() http.Handler {
 			r.Get("/me", s.me)
 		})
 	})
+	r.Route("/api/admin", func(r chi.Router) {
+		r.Use(s.requireAdmin)
+		r.Get("/status", s.adminStatus)
+		r.Post("/rss/fetch", s.adminFetchRSS)
+		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
+		r.Patch("/sources/{id}", s.adminUpdateSource)
+	})
 	sub, _ := fs.Sub(embedded, "static")
 	r.Handle("/*", spa(sub))
 	return r
@@ -352,17 +359,37 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "s.country_code=?")
 		args = append(args, strings.ToUpper(country))
 	}
-	if term := strings.TrimSpace(q.Get("q")); term != "" {
+	term := strings.TrimSpace(q.Get("q"))
+	if term != "" {
 		where = append(where, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ?)", title, description, summary))
 		like := "%" + term + "%"
 		args = append(args, like, like, like)
+	}
+	switch q.Get("period") {
+	case "24h":
+		where = append(where, "a.published_at>=?")
+		args = append(args, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339))
+	case "7d":
+		where = append(where, "a.published_at>=?")
+		args = append(args, time.Now().UTC().Add(-7*24*time.Hour).Format(time.RFC3339))
 	}
 	if q.Get("hide_read") == "1" && logged {
 		where = append(where, "NOT EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')")
 		args = append(args, u.ID)
 	}
+	order := "a.published_at DESC,a.id DESC"
+	switch q.Get("sort") {
+	case "oldest":
+		order = "a.published_at ASC,a.id ASC"
+	case "relevant":
+		if term != "" {
+			order = fmt.Sprintf("CASE WHEN lower(%s)=lower(?) THEN 0 WHEN lower(%s) LIKE lower(?) THEN 1 WHEN lower(%s) LIKE lower(?) OR lower(%s) LIKE lower(?) THEN 2 ELSE 3 END,a.published_at DESC,a.id DESC", title, title, description, summary)
+			like := "%" + term + "%"
+			args = append(args, term, like, like, like)
+		}
+	}
 	args = append(args, limit, offset)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "))
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -1106,6 +1133,7 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string, since time
 	processed := 0
 	for completed := range outcomes {
 		processed++
+		s.recordSourceHealth(ctx, completed.source.ID, completed.result.Inserted, completed.err)
 		if completed.err != nil {
 			log.Printf("rss [%d/%d] %s failed after %s: %v", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.err)
 			continue

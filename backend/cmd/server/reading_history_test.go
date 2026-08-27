@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -58,5 +59,22 @@ func TestReadingHistoryMarksReadsAndCanBeCleared(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("history rows after clear = %d", count)
+	}
+
+	request = httptest.NewRequest("POST", "/api/articles/100/ai-feedback", strings.NewReader(`{"issue_type":"missing","reason":"The summary leaves out the key decision."}`))
+	routeContext = chi.NewRouteContext()
+	routeContext.URLParams.Add("id", "100")
+	request = request.WithContext(context.WithValue(context.WithValue(request.Context(), chi.RouteCtxKey, routeContext), userKey, user{ID: 1}))
+	response = httptest.NewRecorder()
+	s.submitAIFeedback(response, request)
+	if response.Code != 201 {
+		t.Fatalf("feedback status = %d: %s", response.Code, response.Body.String())
+	}
+	var issue, reason string
+	if err = db.QueryRow("SELECT issue_type,reason FROM article_ai_feedback WHERE article_id=100").Scan(&issue, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if issue != "missing" || reason == "" {
+		t.Fatalf("unexpected feedback: issue=%q reason=%q", issue, reason)
 	}
 }
