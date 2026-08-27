@@ -3,9 +3,9 @@ services:
     build: .
     env_file: .env
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-1999}:1999"
     volumes:
-      - news-data:/data
+      - ./data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/app/news", "healthcheck"]
@@ -13,6 +13,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  news-data:

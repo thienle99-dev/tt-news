@@ -40,6 +40,18 @@ func main() {
 		}
 		os.Exit(1)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "reuters-crawl" {
+		runReutersOnce(cfg)
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "rss-fetch" {
+		filter := ""
+		if len(os.Args) > 2 {
+			filter = os.Args[2]
+		}
+		runRSSOnce(cfg, filter)
+		return
+	}
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
@@ -52,6 +64,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go app.runRSS(ctx)
+	if cfg.ReutersCrawlEnabled {
+		go app.runReutersCron(ctx)
+	}
 	if cfg.BotToken != "" && cfg.MiniAppURL != "" {
 		go app.runBot(ctx)
 	} else {
@@ -69,6 +84,35 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func runReutersOnce(cfg config) {
+	if strings.TrimSpace(cfg.ReutersUserAgent) == "" {
+		log.Fatal("set REUTERS_CRAWLER_USER_AGENT before running reuters-crawl")
+	}
+	db, err := openDB(cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err = migrate(db); err != nil {
+		log.Fatal(err)
+	}
+	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
+	app.crawlReuters(context.Background(), time.Now().UTC())
+}
+
+func runRSSOnce(cfg config, filter string) {
+	db, err := openDB(cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	if err = migrate(db); err != nil {
+		log.Fatal(err)
+	}
+	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
+	app.fetchSources(context.Background(), filter)
 }
 
 type server struct {
@@ -363,7 +407,7 @@ func intEnvFrom(v string, d int) int {
 }
 
 func (s *server) runRSS(ctx context.Context) {
-	s.fetchAll(ctx)
+	s.fetchSources(ctx, "")
 	t := time.NewTicker(s.cfg.RSSInterval)
 	defer t.Stop()
 	for {
@@ -371,32 +415,61 @@ func (s *server) runRSS(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			s.fetchAll(ctx)
+			s.fetchSources(ctx, "")
 		}
 	}
 }
-func (s *server) fetchAll(ctx context.Context) {
-	rows, e := s.db.QueryContext(ctx, `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1`)
+func (s *server) fetchSources(ctx context.Context, nameFilter string) {
+	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1`
+	args := []any{}
+	if strings.TrimSpace(nameFilter) != "" {
+		query += " AND lower(s.name) LIKE ?"
+		args = append(args, "%"+strings.ToLower(strings.TrimSpace(nameFilter))+"%")
+	}
+	rows, e := s.db.QueryContext(ctx, query, args...)
 	if e != nil {
 		log.Printf("rss sources: %v", e)
 		return
 	}
-	defer rows.Close()
+	sources := []source{}
 	for rows.Next() {
 		var src source
 		if e = rows.Scan(&src.ID, &src.Name, &src.FeedURL, &src.CategoryID, &src.Category); e != nil {
+			log.Printf("rss source row: %v", e)
 			continue
 		}
-		if e = s.fetchSource(ctx, src); e != nil {
-			log.Printf("rss %s: %v", src.Name, e)
-		}
+		sources = append(sources, src)
 	}
+	if e = rows.Err(); e != nil {
+		rows.Close()
+		log.Printf("rss sources: %v", e)
+		return
+	}
+	rows.Close()
+
+	log.Printf("rss crawl started (filter=%q)", nameFilter)
+	processed := 0
+	inserted := 0
+	for _, src := range sources {
+		processed++
+		log.Printf("rss [%d] fetching %s", processed, src.Name)
+		created, err := s.fetchSource(ctx, src)
+		if err != nil {
+			e = err
+			log.Printf("rss %s: %v", src.Name, e)
+			continue
+		}
+		inserted += created
+		log.Printf("rss [%d] %s: %d new article(s)", processed, src.Name, created)
+	}
+	log.Printf("rss crawl finished: %d source(s), %d new article(s)", processed, inserted)
 }
-func (s *server) fetchSource(ctx context.Context, src source) error {
+func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 	feed, e := s.feed.ParseURLWithContext(src.FeedURL, ctx)
 	if e != nil {
-		return e
+		return 0, e
 	}
+	inserted := 0
 	for _, item := range feed.Items {
 		link := normalizeURL(item.Link)
 		title := strings.TrimSpace(item.Title)
@@ -409,7 +482,7 @@ func (s *server) fetchSource(ctx context.Context, src source) error {
 			continue
 		}
 		if !errors.Is(e, sql.ErrNoRows) {
-			return e
+			return inserted, e
 		}
 		published := time.Now().UTC()
 		if item.PublishedParsed != nil {
@@ -429,12 +502,15 @@ func (s *server) fetchSource(ctx context.Context, src source) error {
 			desc = strings.TrimSpace(item.Content)
 		}
 		summary := s.summarize(ctx, title, desc)
-		_, e = s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, desc, summary, link, image, published.UTC().Format(time.RFC3339))
+		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, desc, summary, link, image, published.UTC().Format(time.RFC3339))
 		if e != nil {
-			return e
+			return inserted, e
+		}
+		if count, _ := result.RowsAffected(); count > 0 {
+			inserted += int(count)
 		}
 	}
-	return nil
+	return inserted, nil
 }
 func normalizeURL(raw string) string {
 	u, e := url.Parse(strings.TrimSpace(raw))

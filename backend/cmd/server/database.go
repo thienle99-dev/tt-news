@@ -3,6 +3,9 @@ package main
 import (
 	"database/sql"
 	"strings"
+
+	"telegram-news/internal/crawlers/rss"
+	"telegram-news/internal/crawlers/scmp"
 )
 
 func health(dbPath string) bool {
@@ -58,13 +61,14 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	sources := []struct{ name, url, slug string }{
-		{"Hacker News", "https://hnrss.org/frontpage", "technology"},
-		{"BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "world"},
-		{"BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml", "business"},
+	sources := []rss.Source{
+		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology"},
+		{Name: "BBC World", URL: "https://feeds.bbci.co.uk/news/world/rss.xml", Category: "world"},
+		{Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business"},
 	}
+	sources = append(sources, scmp.Feeds...)
 	for _, source := range sources {
-		if _, err = db.Exec("INSERT OR IGNORE INTO sources(name,feed_url,category_id) VALUES(?,?,(SELECT id FROM categories WHERE slug=?))", source.name, source.url, source.slug); err != nil {
+		if _, err = db.Exec("INSERT OR IGNORE INTO sources(name,feed_url,category_id) VALUES(?,?,(SELECT id FROM categories WHERE slug=?))", source.Name, source.URL, source.Category); err != nil {
 			return err
 		}
 	}

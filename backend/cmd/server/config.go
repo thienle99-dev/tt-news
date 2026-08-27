@@ -10,26 +10,31 @@ type config struct {
 	Port, DBPath, BotToken, MiniAppURL string
 	AIURL, AIKey, AIModel              string
 	TranslateLanguage                  string
+	ReutersCron, ReutersUserAgent      string
 	RSSInterval, AuthMaxAge            time.Duration
 	DevAuth, TranslateEnabled          bool
+	ReutersCrawlEnabled                bool
 	DevUserID                          int64
 }
 
 func loadConfig() config {
 	return config{
-		Port:              env("PORT", "8080"),
-		DBPath:            env("DATABASE_PATH", "/data/news.db"),
-		BotToken:          os.Getenv("TELEGRAM_BOT_TOKEN"),
-		MiniAppURL:        os.Getenv("MINI_APP_URL"),
-		AIURL:             os.Getenv("AI_URL"),
-		AIKey:             os.Getenv("AI_KEY"),
-		AIModel:           env("AI_MODEL", "gpt-4o-mini"),
-		TranslateEnabled:  env("AI_TRANSLATE_ENABLED", "false") == "true",
-		TranslateLanguage: env("AI_TRANSLATE_LANGUAGE", "Vietnamese"),
-		RSSInterval:       duration("RSS_FETCH_INTERVAL", 10*time.Minute),
-		AuthMaxAge:        duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
-		DevAuth:           env("DEV_AUTH", "false") == "true",
-		DevUserID:         intEnv("DEV_USER_ID", 999001),
+		Port:                env("PORT", "8080"),
+		DBPath:              env("DATABASE_PATH", "/data/news.db"),
+		BotToken:            os.Getenv("TELEGRAM_BOT_TOKEN"),
+		MiniAppURL:          os.Getenv("MINI_APP_URL"),
+		AIURL:               os.Getenv("AI_URL"),
+		AIKey:               os.Getenv("AI_KEY"),
+		AIModel:             env("AI_MODEL", "gpt-4o-mini"),
+		TranslateEnabled:    env("AI_TRANSLATE_ENABLED", "false") == "true",
+		TranslateLanguage:   env("AI_TRANSLATE_LANGUAGE", "Vietnamese"),
+		ReutersCrawlEnabled: env("REUTERS_CRAWL_ENABLED", "false") == "true",
+		ReutersCron:         env("REUTERS_CRON", "15 */2 * * *"),
+		ReutersUserAgent:    os.Getenv("REUTERS_CRAWLER_USER_AGENT"),
+		RSSInterval:         duration("RSS_FETCH_INTERVAL", 10*time.Minute),
+		AuthMaxAge:          duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
+		DevAuth:             env("DEV_AUTH", "false") == "true",
+		DevUserID:           intEnv("DEV_USER_ID", 999001),
 	}
 }
 

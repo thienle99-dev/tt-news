@@ -11,6 +11,9 @@ MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go 
 - `database.go`: SQLite connection, pragmas, migration và RSS seed.
 - `models.go`: DTO và model nội bộ dùng chung.
 - `migrations/` và `static/`: tài nguyên được embed vào binary; Docker copy React build vào `static/` trước khi compile.
+- `internal/crawler/`: interface `Job` và cron scheduler chung cho các crawler không phải RSS.
+- `internal/crawlers/<source>/`: cấu hình và parser riêng theo từng nguồn; hiện SCMP RSS nằm ở `internal/crawlers/scmp/`.
+- `internal/crawlers/rss/`: contract `rss.Source` chung; mọi site RSS chỉ khai báo `Name`, `URL`, `Category`, sau đó dùng chung worker fetch/parse/dedupe.
 
 ## Chạy bằng Docker
 
@@ -19,7 +22,7 @@ MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go 
 3. Chạy: `docker compose up -d --build`.
 4. Kiểm tra: `curl http://localhost:8080/health` và `docker compose logs -f`.
 
-SQLite được lưu trong named volume Docker tại `/data/news.db`. Để xem trực tiếp database: `docker compose exec news-app /bin/sh` (runtime image không cài sqlite CLI; có thể mount volume hoặc dùng tool SQLite bên ngoài).
+SQLite được bind mount trực tiếp tại `./data/news.db` trong project (tương ứng `/data/news.db` trong container). Bạn có thể mở file này bằng SQLite client trên máy host.
 
 Nếu chưa có bot/token, app vẫn chạy và RSS tự tải tin; đặt `DEV_AUTH=true` chỉ để thử Saved trong trình duyệt local. Không bật biến này ở môi trường public.
 
@@ -37,7 +40,11 @@ Telegram yêu cầu HTTPS cho Mini App production. Browser ở `localhost` khôn
 Sau khi container đang chạy ở cổng 8080, mở một terminal khác và chạy Quick Tunnel:
 
 ```bash
-cloudflared tunnel --url http://localhost:8080
+cloudflared tunnel --url http://localhost:1999
+```
+```bash
+nohup cloudflared tunnel --url http://localhost:8080 > ~/cloudflared.log 2>&1 &
+  echo $!
 ```
 
 Lệnh in ra một URL dạng `https://news-abc.trycloudflare.com`. Gán URL đó vào `MINI_APP_URL` trong `.env`, sau đó restart app để bot dùng URL mới:
@@ -86,6 +93,35 @@ VALUES ('Example Tech', 'https://example.com/feed.xml',
 ```
 
 Worker chạy lúc khởi động và mỗi `RSS_FETCH_INTERVAL` (mặc định `10m`). URL là unique nên bài cũ không được chèn lại; lỗi một feed chỉ được log và không ảnh hưởng app hoặc feed còn lại.
+
+RSS tổng hợp SCMP `https://www.scmp.com/rss/feed` được seed mặc định, để lấy tin mới từ toàn site. Có thể thêm feed theo category trên [SCMP RSS](https://www.scmp.com/rss); bài xuất hiện ở nhiều feed vẫn chỉ được lưu một lần nhờ unique URL.
+
+Chạy thủ công một lượt RSS SCMP (không start HTTP server, Telegram Bot hay scheduler):
+
+```bash
+docker compose build news-app
+docker compose run --rm --no-deps news-app /app/news rss-fetch scmp
+```
+
+Để fetch toàn bộ RSS source đang bật, bỏ filter cuối: `docker compose run --rm --no-deps news-app /app/news rss-fetch`.
+
+## Reuters sitemap crawler (chỉ khi được cho phép)
+
+Reuters crawler không dùng RSS. Khi đã có quyền crawl từ Reuters, bật worker sitemap HTML bằng `.env`:
+
+```env
+REUTERS_CRAWL_ENABLED=true
+REUTERS_CRON=15 */2 * * *
+REUTERS_CRAWLER_USER_AGENT=MyNewsCrawler/1.0 (+contact@example.com)
+```
+
+Cron dùng UTC, chạy ngay khi app khởi động rồi theo lịch năm trường `minute hour day-of-month month day-of-week`. Worker lấy `/sitemap/YYYY-MM/DD/page/`, chỉ theo URL article Reuters, ưu tiên JSON-LD `NewsArticle` và fallback sang thẻ `<article>`. URL được dedupe trong SQLite trước khi tải bài; 401, 403 hoặc 429 được coi là access/rate-limit failure và không có cơ chế bypass. Để mặc định `REUTERS_CRAWL_ENABLED=false` nếu chưa được Reuters cho phép.
+
+Để chạy một lượt thủ công (không bật HTTP server hay cron), giữ `REUTERS_CRAWLER_USER_AGENT` trong `.env` rồi dùng:
+
+```bash
+docker compose run --rm news-app /app/news reuters-crawl
+```
 
 ## AI summary và dịch tiếng Việt
 
