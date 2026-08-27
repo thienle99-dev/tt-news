@@ -229,6 +229,10 @@ func (s *server) upsertUser(ctx context.Context, u user) (user, error) {
 }
 func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	language := q.Get("lang")
+	if language != "vi" {
+		language = ""
+	}
 	limit := intEnvFrom(q.Get("limit"), 20)
 	if limit < 1 {
 		limit = 20
@@ -242,6 +246,12 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	if logged {
 		savedJoin = "EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?)"
 		args = append(args, u.ID)
+	}
+	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
+	if language != "" {
+		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
+		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "COALESCE(NULLIF(tr.description,''),a.description)", "COALESCE(NULLIF(tr.summary,''),a.summary)"
+		args = append(args, language)
 	}
 	where := []string{"1=1"}
 	if c := q.Get("category"); c != "" {
@@ -257,12 +267,12 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		args = append(args, strings.ToUpper(country))
 	}
 	if term := strings.TrimSpace(q.Get("q")); term != "" {
-		where = append(where, "(a.title LIKE ? OR a.description LIKE ? OR a.summary LIKE ?)")
+		where = append(where, fmt.Sprintf("(%s LIKE ? OR %s LIKE ? OR %s LIKE ?)", title, description, summary))
 		like := "%" + term + "%"
 		args = append(args, like, like, like)
 	}
 	args = append(args, limit)
-	sqlq := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, savedJoin, strings.Join(where, " AND "))
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, title, description, summary, savedJoin, translationJoin, strings.Join(where, " AND "))
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -346,7 +356,16 @@ func (s *server) countries(w http.ResponseWriter, r *http.Request) {
 }
 func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	rows, e := s.db.QueryContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE sa.user_id=? ORDER BY sa.created_at DESC`, u.ID)
+	language := r.URL.Query().Get("lang")
+	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
+	args := []any{u.ID}
+	if language == "vi" {
+		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
+		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "COALESCE(NULLIF(tr.description,''),a.description)", "COALESCE(NULLIF(tr.summary,''),a.summary)"
+		args = []any{language, u.ID}
+	}
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
+	rows, e := s.db.QueryContext(r.Context(), query, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
 		return

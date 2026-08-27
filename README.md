@@ -71,6 +71,8 @@ cd backend && DATABASE_PATH=../data/news.db DEV_AUTH=true go run ./cmd/server
 
 Vite mặc định chạy cổng 5173 và proxy `/api` về Go ở 8080, nên feed/Saved chạy được khi mở `http://localhost:5173`. Để Go tự phục vụ frontend như production, build frontend (`pnpm build`) rồi copy `frontend/dist` thành `backend/static`; Docker tự làm các bước này.
 
+Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-news-headline`. Mở trực tiếp URL này vẫn tải đúng trang chi tiết.
+
 ## API
 
 | Method | Endpoint | Mô tả |
