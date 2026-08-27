@@ -19,10 +19,12 @@ MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go 
 
 1. Tạo file cấu hình: `cp .env.example .env`.
 2. Điền `MINI_APP_URL` (URL HTTPS Cloudflare Tunnel) và `TELEGRAM_BOT_TOKEN` khi đã có bot.
-3. Chạy: `docker compose up -d --build`.
+3. Chạy: `make restart` (tương đương `docker compose up -d --build --force-recreate`).
 4. Kiểm tra: `curl http://localhost:8080/health` và `docker compose logs -f`.
 
 SQLite được bind mount trực tiếp tại `./data/news.db` trong project (tương ứng `/data/news.db` trong container). Bạn có thể mở file này bằng SQLite client trên máy host.
+
+Các lệnh thường dùng: `make build` để build image, `make up` để start, `make restart` để build lại và restart app, `make logs` để xem log, và `make down` để dừng app.
 
 Nếu chưa có bot/token, app vẫn chạy và RSS tự tải tin; đặt `DEV_AUTH=true` chỉ để thử Saved trong trình duyệt local. Không bật biến này ở môi trường public.
 

@@ -296,45 +296,6 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, a)
 }
-func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	s.translationMu.Lock()
-	defer s.translationMu.Unlock()
-
-	var translated translation
-	err := s.db.QueryRowContext(r.Context(), `SELECT title,description,summary FROM article_translations WHERE article_id=? AND language_code='vi'`, id).Scan(&translated.Title, &translated.Description, &translated.Summary)
-	if err == nil {
-		jsonOut(w, http.StatusOK, translated)
-		return
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		jsonErr(w, http.StatusInternalServerError, "could not load translation")
-		return
-	}
-
-	var a article
-	err = s.db.QueryRowContext(r.Context(), `SELECT id,title,description,summary FROM articles WHERE id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary)
-	if errors.Is(err, sql.ErrNoRows) {
-		jsonErr(w, http.StatusNotFound, "article not found")
-		return
-	}
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, "could not load article")
-		return
-	}
-	translated, err = s.translate(r.Context(), a)
-	if err != nil {
-		log.Printf("translate article %d: %v", a.ID, err)
-		jsonErr(w, http.StatusServiceUnavailable, "could not translate article")
-		return
-	}
-	_, err = s.db.ExecContext(r.Context(), `INSERT INTO article_translations(article_id,language_code,title,description,summary) VALUES(?,'vi',?,?,?)`, a.ID, translated.Title, translated.Description, translated.Summary)
-	if err != nil {
-		jsonErr(w, http.StatusInternalServerError, "could not save translation")
-		return
-	}
-	jsonOut(w, http.StatusOK, translated)
-}
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 	rows, e := s.db.QueryContext(r.Context(), "SELECT slug,name FROM categories ORDER BY name")
 	if e != nil {
@@ -606,73 +567,6 @@ func normalizeURL(raw string) string {
 	u.Scheme = strings.ToLower(u.Scheme)
 	u.Host = strings.ToLower(u.Host)
 	return u.String()
-}
-
-func (s *server) translate(ctx context.Context, article article) (translation, error) {
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
-		return translation{}, errors.New("translation service is not configured")
-	}
-	instruction := `Translate the supplied news fields from English to Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts.
-
-Your entire response MUST be one valid JSON object and nothing else. The first character must be { and the last character must be }. Do not use Markdown, code fences, prose, labels, or explanations. Use exactly these string keys: "title", "description", "summary". Keep empty input fields as empty strings.
-
-Required output shape:
-{"title":"Vietnamese translation","description":"Vietnamese translation","summary":"Vietnamese translation"}`
-	payload := map[string]any{"model": s.cfg.AIModel, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\n\ndescription: %s\n\nsummary: %s", article.Title, article.Description, article.Summary)}}, "temperature": 0.2, "response_format": map[string]string{"type": "json_object"}}
-	data, e := json.Marshal(payload)
-	if e != nil {
-		return translation{}, e
-	}
-	req, e := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.AIURL, strings.NewReader(string(data)))
-	if e != nil {
-		return translation{}, e
-	}
-	req.Header.Set("Authorization", "Bearer "+s.cfg.AIKey)
-	req.Header.Set("Content-Type", "application/json")
-	res, e := (&http.Client{Timeout: 30 * time.Second}).Do(req)
-	if e != nil {
-		return translation{}, e
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		body, readErr := io.ReadAll(io.LimitReader(res.Body, 8<<10))
-		if readErr != nil {
-			return translation{}, fmt.Errorf("translation endpoint returned %s (could not read error body: %w)", res.Status, readErr)
-		}
-		message := strings.TrimSpace(string(body))
-		if message == "" {
-			return translation{}, fmt.Errorf("translation endpoint returned %s with an empty error body", res.Status)
-		}
-		return translation{}, fmt.Errorf("translation endpoint returned %s: %s", res.Status, message)
-	}
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if e = json.NewDecoder(res.Body).Decode(&out); e != nil || len(out.Choices) == 0 {
-		if e == nil {
-			e = errors.New("translation response has no choices")
-		}
-		return translation{}, e
-	}
-	var result translation
-	if e = json.Unmarshal([]byte(out.Choices[0].Message.Content), &result); e != nil {
-		content := strings.TrimSpace(out.Choices[0].Message.Content)
-		if len(content) > 4096 {
-			content = content[:4096] + "…"
-		}
-		return translation{}, fmt.Errorf("decode translation: %w; model content: %q", e, content)
-	}
-	result.Title = strings.TrimSpace(result.Title)
-	result.Description = strings.TrimSpace(result.Description)
-	result.Summary = strings.TrimSpace(result.Summary)
-	if result.Title == "" {
-		return translation{}, errors.New("translation response is missing title")
-	}
-	return result, nil
 }
 
 func (s *server) runBot(ctx context.Context) {
