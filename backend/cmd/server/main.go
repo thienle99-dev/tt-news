@@ -571,27 +571,52 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string, since time
 		sinceLabel = since.Format("2006-01-02") + " UTC"
 	}
 	log.Printf("rss crawl started: sources=%d filter=%q since=%s", len(sources), nameFilter, sinceLabel)
-	processed := 0
 	total := rssFetchResult{}
 	crawlStarted := time.Now()
-	for _, src := range sources {
+	workers := min(s.cfg.RSSFetchWorkers, len(sources))
+	type outcome struct {
+		source source
+		result rssFetchResult
+		err    error
+	}
+	jobs := make(chan source)
+	outcomes := make(chan outcome, len(sources))
+	var workersDone sync.WaitGroup
+	for range workers {
+		workersDone.Add(1)
+		go func() {
+			defer workersDone.Done()
+			for src := range jobs {
+				log.Printf("rss fetching %s (%s)", src.Name, src.FeedURL)
+				result, err := s.fetchSource(ctx, src, since)
+				outcomes <- outcome{source: src, result: result, err: err}
+			}
+		}()
+	}
+	go func() {
+		for _, src := range sources {
+			jobs <- src
+		}
+		close(jobs)
+		workersDone.Wait()
+		close(outcomes)
+	}()
+	processed := 0
+	for completed := range outcomes {
 		processed++
-		log.Printf("rss [%d/%d] fetching %s (%s)", processed, len(sources), src.Name, src.FeedURL)
-		result, err := s.fetchSource(ctx, src, since)
-		if err != nil {
-			e = err
-			log.Printf("rss [%d/%d] %s failed after %s: %v", processed, len(sources), src.Name, result.Duration.Round(time.Millisecond), e)
+		if completed.err != nil {
+			log.Printf("rss [%d/%d] %s failed after %s: %v", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.err)
 			continue
 		}
-		total.add(result)
-		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", processed, len(sources), src.Name, result.Duration.Round(time.Millisecond), result.FeedItems, result.Inserted, result.Existing, result.BeforeSince, result.Invalid, result.Summarized, result.SummaryFailed, result.TranslationQueued)
+		total.add(completed.result)
+		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.result.FeedItems, completed.result.Inserted, completed.result.Existing, completed.result.BeforeSince, completed.result.Invalid, completed.result.Summarized, completed.result.SummaryFailed, completed.result.TranslationQueued)
 	}
 	log.Printf("rss crawl finished in %s: sources=%d feed-items=%d new=%d existing=%d before-date=%d invalid=%d ai-ok=%d ai-failed=%d translation-queued=%d", time.Since(crawlStarted).Round(time.Millisecond), processed, total.FeedItems, total.Inserted, total.Existing, total.BeforeSince, total.Invalid, total.Summarized, total.SummaryFailed, total.TranslationQueued)
 }
 func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (result rssFetchResult, err error) {
 	started := time.Now()
 	defer func() { result.Duration = time.Since(started) }()
-	feed, e := s.feed.ParseURLWithContext(src.FeedURL, ctx)
+	feed, e := gofeed.NewParser().ParseURLWithContext(src.FeedURL, ctx)
 	if e != nil {
 		return result, e
 	}

@@ -11,6 +11,7 @@ type config struct {
 	AIURL, AIKey, AIModel              string
 	RSSInterval, AuthMaxAge            time.Duration
 	RSSContentUserAgent                string
+	RSSFetchWorkers                    int
 	DevAuth                            bool
 	RSSTranslateVietnamese             bool
 	DevUserID                          int64
@@ -28,6 +29,7 @@ func loadConfig() config {
 		RSSTranslateVietnamese: env("RSS_TRANSLATE_VI", "true") == "true",
 		RSSInterval:            duration("RSS_FETCH_INTERVAL", 10*time.Minute),
 		RSSContentUserAgent:    env("RSS_CONTENT_USER_AGENT", "TelegramNewsRSSBot/1.0"),
+		RSSFetchWorkers:        positiveIntEnv("RSS_FETCH_WORKERS", 8),
 		AuthMaxAge:             duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
 		DevAuth:                env("DEV_AUTH", "false") == "true",
 		DevUserID:              intEnv("DEV_USER_ID", 999001),
@@ -50,6 +52,14 @@ func duration(key string, fallback time.Duration) time.Duration {
 
 func intEnv(key string, fallback int64) int64 {
 	if value, err := strconv.ParseInt(env(key, ""), 10, 64); err == nil {
+		return value
+	}
+	return fallback
+}
+
+func positiveIntEnv(key string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(key))
+	if err == nil && value > 0 {
 		return value
 	}
 	return fallback

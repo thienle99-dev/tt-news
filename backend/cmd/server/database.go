@@ -92,6 +92,9 @@ func migrate(db *sql.DB) error {
 
 	sources := []rss.Source{
 		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "DW News", URL: "https://rss.dw.com/rdf/rss-en-all", Category: "world", CountryCode: "DE", CountryName: "Đức"},
+		{Name: "CNA World", URL: "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6311", Category: "world", CountryCode: "SG", CountryName: "Singapore"},
+		{Name: "CNA Asia", URL: "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511", Category: "world", CountryCode: "SG", CountryName: "Singapore"},
 		{Name: "POLITICO Politics", URL: "https://rss.politico.com/politics-news.xml", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "POLITICO Congress", URL: "https://rss.politico.com/congress.xml", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "POLITICO Playbook", URL: "https://rss.politico.com/playbook.xml", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
