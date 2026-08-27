@@ -762,6 +762,18 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		}
 		if count, _ := dbResult.RowsAffected(); count > 0 {
 			result.Inserted += int(count)
+			if s.cfg.AIBackgroundScanning && s.cfg.RSSTranslateVietnamese {
+				articleID, idErr := dbResult.LastInsertId()
+				if idErr != nil {
+					log.Printf("rss translation queue id %s: %v", link, idErr)
+					continue
+				}
+				if _, queueErr := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code) VALUES(?,'vi')`, articleID); queueErr != nil {
+					log.Printf("rss translation queue %s: %v", link, queueErr)
+				} else {
+					log.Printf("rss translation queued article id=%d", articleID)
+				}
+			}
 		}
 	}
 	return result, nil
