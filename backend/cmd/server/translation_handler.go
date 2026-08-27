@@ -37,7 +37,7 @@ func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "could not load article")
 		return
 	}
-	fields, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Vietnamese(r.Context(), translationservice.Fields{Title: article.Title, Summary: article.Summary})
+	fields, err := s.aiClient().Vietnamese(r.Context(), translationservice.Fields{Title: article.Title, Summary: article.Summary})
 	if err != nil {
 		log.Printf("translate article %d: %v", article.ID, err)
 		jsonErr(w, http.StatusServiceUnavailable, "could not translate article")
@@ -82,8 +82,9 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusConflict, "full article content is unavailable; crawl the source again")
 		return
 	}
-	log.Printf("resummarize article id=%d: sending AI request (content_chars=%d model=%q)", article.ID, len(body), s.cfg.AIModel)
-	brief, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(r.Context(), article.Title, body)
+	aiSettings, _ := s.currentAISettings()
+	log.Printf("resummarize article id=%d: sending AI request (content_chars=%d model=%q)", article.ID, len(body), aiSettings.Model)
+	brief, err := s.aiClient().Summarize(r.Context(), article.Title, body)
 	if err != nil {
 		log.Printf("resummarize article id=%d: AI request failed: %v", article.ID, err)
 		jsonErr(w, http.StatusServiceUnavailable, "could not resummarize article")

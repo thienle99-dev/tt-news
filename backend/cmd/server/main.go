@@ -64,7 +64,11 @@ func main() {
 	if err = migrate(db); err != nil {
 		log.Fatal(err)
 	}
-	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
+	ai, err := newAIRuntimeConfig(db, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser(), ai: ai}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go app.runRSS(ctx)
@@ -145,6 +149,9 @@ func runRSSOnce(cfg config, filter string, since time.Time) {
 	if err = migrate(db); err != nil {
 		log.Fatal(err)
 	}
+	if cfg, err = loadPersistedAIConfig(context.Background(), db, cfg); err != nil {
+		log.Fatal(err)
+	}
 	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
 	app.fetchSources(context.Background(), filter, since)
 }
@@ -156,6 +163,9 @@ func runFeaturedOnce(cfg config) {
 	}
 	defer db.Close()
 	if err = migrate(db); err != nil {
+		log.Fatal(err)
+	}
+	if cfg, err = loadPersistedAIConfig(context.Background(), db, cfg); err != nil {
 		log.Fatal(err)
 	}
 	app := &server{db: db, cfg: cfg, feed: gofeed.NewParser()}
@@ -171,6 +181,7 @@ type server struct {
 	goldRatesMu    sync.Mutex
 	goldRates      []goldRate
 	goldRatesUntil time.Time
+	ai             *aiRuntimeConfig
 }
 
 func (s *server) routes() http.Handler {
@@ -215,6 +226,11 @@ func (s *server) routes() http.Handler {
 		r.Post("/rss/fetch", s.adminFetchRSS)
 		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
 		r.Patch("/sources/{id}", s.adminUpdateSource)
+		r.Get("/ai/config", s.adminAIConfig)
+		r.Put("/ai/config", s.adminSaveAIConfig)
+		r.Delete("/ai/config", s.adminResetAIConfig)
+		r.Post("/ai/models", s.adminAIModels)
+		r.Post("/ai/test", s.adminTestAI)
 	})
 	sub, _ := fs.Sub(embedded, "static")
 	r.Handle("/*", spa(sub))

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -14,6 +16,11 @@ import (
 type Client struct {
 	URL, APIKey, Model string
 	HTTPClient         *http.Client
+}
+
+type ModelInfo struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
 }
 
 type Fields struct {
@@ -41,6 +48,133 @@ type FeaturedBrief struct {
 	Topics []FeaturedTopic `json:"topics"`
 }
 
+// NormalizeBaseURL accepts either an API host (https://api.example.com), an
+// OpenAI API root (.../v1), or the legacy full Chat Completions URL. The
+// returned value never includes /chat/completions.
+func NormalizeBaseURL(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", errors.New("AI base URL is required")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", errors.New("AI base URL must be a valid http or https URL")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("AI base URL must not contain credentials, a query, or a fragment")
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if strings.HasSuffix(parsed.Path, "/chat/completions") {
+		parsed.Path = strings.TrimSuffix(parsed.Path, "/chat/completions")
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func (c Client) endpoint(name string) (string, error) {
+	base, err := NormalizeBaseURL(c.URL)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if !strings.HasSuffix(path, "/v1") {
+		path += "/v1"
+	}
+	parsed.Path = path + "/" + strings.TrimLeft(name, "/")
+	return parsed.String(), nil
+}
+
+// Models lists models exposed by an OpenAI-compatible provider.
+func (c Client) Models(ctx context.Context) ([]ModelInfo, error) {
+	endpoint, err := c.endpoint("models")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, endpointError("models", res)
+	}
+	var response struct {
+		Data []ModelInfo `json:"data"`
+	}
+	if err = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); err != nil {
+		return nil, fmt.Errorf("decode models: %w", err)
+	}
+	models := response.Data[:0]
+	for _, model := range response.Data {
+		if model.ID = strings.TrimSpace(model.ID); model.ID != "" {
+			models = append(models, model)
+		}
+	}
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	return models, nil
+}
+
+// Test checks that the selected model can complete a minimal chat request.
+func (c Client) Test(ctx context.Context) (string, error) {
+	if strings.TrimSpace(c.Model) == "" {
+		return "", errors.New("AI model is required")
+	}
+	endpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return "", err
+	}
+	payload := map[string]any{
+		"model": c.Model,
+		"messages": []map[string]string{{"role": "user", "content": "Reply with OK."}},
+		"stream": false,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(data)))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", endpointError("model test", res)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	content, err := completionContent(body)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(content), nil
+}
+
 func (c Client) Featured(ctx context.Context, candidates []FeaturedCandidate) (FeaturedBrief, error) {
 	instruction := `You are the editor of an international news briefing. Group the supplied articles into 5 to 8 distinct, important news events. Return only JSON with title, intro, and topics. Each topic needs title, summary, and article_ids. Summary must be concise and factual. Each topic must cite 1 to 3 supplied article IDs, never invent IDs, and no ID may appear in more than one topic. Prefer diverse sources.`
 	return c.featuredRequest(ctx, instruction, candidates)
@@ -60,7 +194,11 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	if err != nil {
 		return FeaturedBrief{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	chatEndpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return FeaturedBrief{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatEndpoint, strings.NewReader(string(data)))
 	if err != nil {
 		return FeaturedBrief{}, err
 	}
@@ -106,7 +244,11 @@ func (c Client) IsJunk(ctx context.Context, title string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	chatEndpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatEndpoint, strings.NewReader(string(data)))
 	if err != nil {
 		return false, err
 	}
@@ -166,7 +308,11 @@ Write a specific, neutral title that accurately reflects the central event witho
 	if err != nil {
 		return Fields{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	chatEndpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return Fields{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatEndpoint, strings.NewReader(string(data)))
 	if err != nil {
 		return Fields{}, err
 	}
@@ -257,7 +403,11 @@ Required output shape:
 	if err != nil {
 		return Fields{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	chatEndpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return Fields{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatEndpoint, strings.NewReader(string(data)))
 	if err != nil {
 		return Fields{}, err
 	}

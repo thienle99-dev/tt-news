@@ -5,14 +5,12 @@ import (
 	"log"
 	"strings"
 	"time"
-
-	translationservice "telegram-news/internal/translation"
 )
 
 const cleanupReviewVersion = "title-only-v1"
 
 func (s *server) runContentCleanupWorker(ctx context.Context) {
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
+	if !s.aiConfigured() {
 		log.Print("content cleanup AI review disabled; rule-based spam filtering remains enabled")
 	}
 	s.cleanupJunkArticles(ctx)
@@ -52,8 +50,8 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 		log.Printf("content cleanup rows: %v", err)
 		return
 	}
-	aiEnabled := s.cfg.AIURL != "" && s.cfg.AIKey != ""
-	client := translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}
+	aiEnabled := s.aiConfigured()
+	client := s.aiClient()
 	removed, removedWithoutAI, reviewed := 0, 0, 0
 	for _, item := range candidates {
 		if isObviousJunk(item.title) {

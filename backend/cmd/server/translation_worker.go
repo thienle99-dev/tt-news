@@ -16,7 +16,7 @@ func (s *server) runTranslationWorker(ctx context.Context) {
 		log.Printf("RSS translation worker disabled: AI_TRANSLATE_LANGUAGE=%q is not supported; only Vietnamese is currently supported", s.cfg.AITranslateLanguage)
 		return
 	}
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
+	if !s.aiConfigured() {
 		log.Print("RSS translation worker disabled: set AI_URL and AI_KEY to enable it")
 		return
 	}
@@ -55,7 +55,7 @@ func (s *server) processTranslationJob(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	log.Printf("RSS translation worker: translating article id=%d", articleID)
-	translated, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Vietnamese(ctx, translationservice.Fields{Title: title, Description: description, Summary: summary})
+	translated, err := s.aiClient().Vietnamese(ctx, translationservice.Fields{Title: title, Description: description, Summary: summary})
 	if err != nil {
 		_, _ = s.db.ExecContext(ctx, `UPDATE translation_jobs SET created_at=CURRENT_TIMESTAMP WHERE article_id=? AND language_code='vi'`, articleID)
 		return true, err

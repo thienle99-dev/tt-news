@@ -12,3 +12,6 @@ export type TelegramUser = { telegram_id: number; username: string; first_name: 
 export type GoldRate = { code: string; name: string; buy_price: number; sell_price: number; unit: string; trend: string; trend_value: string; last_updated: string }
 export type SavedCollection = { id: number; name: string; count: number }
 export type SavedOrganization = { folders: SavedCollection[]; tags: SavedCollection[] }
+export type AIModel = { id: string; owned_by?: string }
+export type AIConfig = { base_url: string; model: string; api_key_configured: boolean; source: 'env' | 'saved' }
+export type AIConfigInput = { base_url: string; api_key: string; model: string }

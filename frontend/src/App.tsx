@@ -1466,7 +1466,19 @@ function Settings({
     </section>
   );
 }
+type AdminStatus = Awaited<ReturnType<typeof api.adminStatus>>;
+function AdminPage() {
+  const [token, setToken] = useState(() => sessionStorage.getItem("admin-token") || "");
+  const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [error, setError] = useState("");
+  const load = async () => {
+    try { const next = await api.adminStatus(token); sessionStorage.setItem("admin-token", token); setStatus(next); setError(""); } catch { setError("Không thể tải dữ liệu hoặc token quản trị không hợp lệ."); }
+  };
+  const action = async (work: () => Promise<unknown>) => { try { await work(); await load(); } catch { setError("Thao tác không thành công."); } };
+  return <main><div className="app-shell"><section className="page settings"><h1>Vận hành</h1><label className="filter-field"><span>ADMIN TOKEN</span><input type="password" value={token} onChange={event => setToken(event.target.value)} /></label><button className="primary" onClick={() => void load()}>Tải dashboard</button>{error && <p className="state error">{error}</p>}{status && <><section className="settings-card"><small>RSS & AI</small><p>Hàng đợi dịch: {status.translation_queue}</p><p>Model: {status.ai.model} · {status.ai.configured ? "đã cấu hình" : "chưa cấu hình"}</p><p>Dịch: {status.ai.translations_generated} · Featured: {status.ai.featured_briefs} · Phản hồi: {status.ai.feedback}</p><p>{status.ai.cost_tracking}</p><button className="text-button" onClick={() => void action(() => api.adminFetchRSS(token))}>Chạy RSS ngay</button><button className="text-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button></section><section className="settings-card"><small>NGUỒN TIN</small>{status.sources.map(source => <div key={source.id}><p><strong>{source.name}</strong> · {source.enabled ? "đang bật" : "đang tắt"}</p><p>{source.last_error || source.last_success_at || "Chưa có lượt chạy"} · mới: {source.last_inserted}</p><button className="text-button" onClick={() => void action(() => api.adminUpdateSource(token, source.id, !source.enabled))}>{source.enabled ? "Tắt nguồn" : "Bật nguồn"}</button></div>)}</section></>}</section></div></main>;
+}
 export default function App() {
+  if (window.location.pathname === "/admin") return <AdminPage />;
   const telegramLocale =
     window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code === "vi"
       ? "vi"

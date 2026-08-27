@@ -77,7 +77,7 @@ Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-
 | Method | Endpoint | Mô tả |
 | --- | --- | --- |
 | GET | `/health` | Trạng thái service/database |
-| GET | `/api/articles?category=technology&q=bitcoin&limit=20` | Feed mới nhất |
+| GET | `/api/articles?category=technology&q=bitcoin&period=24h&sort=relevant&limit=20` | Feed; `period=24h|7d`, `sort=newest|oldest|relevant` |
 | GET | `/api/articles/:id` | Chi tiết bài |
 | POST | `/api/articles/:id/translations/vi` | Dịch và lấy cache tiếng Việt (Telegram auth) |
 | POST | `/api/articles/:id/ai-feedback` | Gửi phản hồi `{ issue_type: "incorrect"|"missing", reason }` về tóm tắt AI (Telegram auth) |
@@ -94,6 +94,10 @@ Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-
 | DELETE | `/api/reading-history` | Xoá toàn bộ lịch sử đọc (Telegram auth) |
 
 Các API Saved nhận `Authorization: tma <Telegram initData>`. Backend kiểm tra HMAC Telegram, `auth_date` (mặc định tối đa 24 giờ) và upsert user trước khi truy cập dữ liệu.
+
+## Vận hành
+
+Đặt `ADMIN_TOKEN` thành một secret mạnh để bật dashboard tại `/admin`. Dashboard gửi token qua header `X-Admin-Token`, theo dõi trạng thái/lỗi RSS, nguồn ngừng cập nhật, hàng đợi dịch và số liệu AI; đồng thời có thể chạy RSS, tạo lại featured brief và bật/tắt source. Nếu không đặt token, toàn bộ `/api/admin/*` bị từ chối.
 
 `GET /api/articles` cũng trả về `is_read`; thêm `hide_read=1` để không trả các bài người dùng đã đánh dấu đã đọc. Mở trang chi tiết sẽ ghi một mục “Đọc tiếp”; người dùng có thể đánh dấu hoàn tất, xem lại lịch sử, hoặc xoá toàn bộ lịch sử từ thanh điều hướng của Mini App.
 

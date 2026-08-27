@@ -17,7 +17,7 @@ const featuredCandidateLimit = 80
 const featuredPerSourceLimit = 4
 
 func (s *server) runFeaturedWorker(ctx context.Context) {
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
+	if !s.aiConfigured() {
 		log.Print("featured briefing worker disabled: set AI_URL and AI_KEY to enable it")
 		return
 	}
@@ -35,7 +35,7 @@ func (s *server) runFeaturedWorker(ctx context.Context) {
 }
 
 func (s *server) generateFeaturedBrief(ctx context.Context) {
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
+	if !s.aiConfigured() {
 		return
 	}
 	s.featuredMu.Lock()
@@ -60,7 +60,7 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 		log.Printf("featured briefing skipped: only %d eligible articles", len(candidates))
 		return
 	}
-	client := translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}
+	client := s.aiClient()
 	brief, err := client.Featured(ctx, candidates)
 	if err != nil {
 		log.Printf("featured briefing generation: %v", err)

@@ -8,9 +8,6 @@ import (
 )
 
 func runTranslateAllVietnamese(cfg config) {
-	if cfg.AIURL == "" || cfg.AIKey == "" {
-		log.Fatal("set AI_URL and AI_KEY before running translate-all-vi")
-	}
 	db, err := openDB(cfg.DBPath)
 	if err != nil {
 		log.Fatal(err)
@@ -18,6 +15,12 @@ func runTranslateAllVietnamese(cfg config) {
 	defer db.Close()
 	if err = migrate(db); err != nil {
 		log.Fatal(err)
+	}
+	if cfg, err = loadPersistedAIConfig(context.Background(), db, cfg); err != nil {
+		log.Fatal(err)
+	}
+	if cfg.AIURL == "" || cfg.AIKey == "" {
+		log.Fatal("set AI_URL and AI_KEY before running translate-all-vi")
 	}
 	rows, err := db.Query(`SELECT id,title,summary FROM articles WHERE NOT EXISTS (SELECT 1 FROM article_translations tr WHERE tr.article_id=articles.id AND tr.language_code='vi') ORDER BY id`)
 	if err != nil {
