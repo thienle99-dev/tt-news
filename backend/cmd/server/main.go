@@ -27,8 +27,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mmcdole/gofeed"
-	"telegram-news/internal/articletext"
 	_ "modernc.org/sqlite"
+	"telegram-news/internal/articletext"
 )
 
 //go:embed migrations/*.sql static/*

@@ -99,6 +99,8 @@ VALUES ('Example Tech', 'https://example.com/feed.xml',
 
 Worker chạy lúc khởi động và mỗi `RSS_FETCH_INTERVAL` (mặc định `10m`). URL là unique nên bài cũ không được chèn lại; lỗi một feed chỉ được log và không ảnh hưởng app hoặc feed còn lại.
 
+Với mỗi bài RSS mới, worker cũng thử tải trang đích để lưu nội dung đầy đủ dạng plain text vào `description`; `summary` vẫn giữ mô tả ngắn từ RSS. Có thể đặt `RSS_CONTENT_USER_AGENT` để nhận diện crawler. Nếu trang là paywall, non-HTML, quá lớn hoặc trả lỗi, bài vẫn được lưu với nội dung RSS làm fallback; bài đã tồn tại không được tải lại.
+
 RSS tổng hợp SCMP `https://www.scmp.com/rss/feed` được seed mặc định, để lấy tin mới từ toàn site. Có thể thêm feed theo category trên [SCMP RSS](https://www.scmp.com/rss); bài xuất hiện ở nhiều feed vẫn chỉ được lưu một lần nhờ unique URL.
 
 Chạy thủ công một lượt RSS SCMP (không start HTTP server, Telegram Bot hay scheduler):
