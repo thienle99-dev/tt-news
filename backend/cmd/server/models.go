@@ -32,6 +32,7 @@ type article struct {
 	CountryCode   string   `json:"country_code"`
 	CountryName   string   `json:"country_name"`
 	Category      string   `json:"category"`
+	Categories    []string `json:"categories"`
 	PublishedAt   string   `json:"published_at"`
 	IsSaved       bool     `json:"is_saved"`
 	IsRead        bool     `json:"is_read"`

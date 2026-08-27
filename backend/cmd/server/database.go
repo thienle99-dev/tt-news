@@ -39,7 +39,7 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
@@ -145,7 +145,7 @@ func migrate(db *sql.DB) error {
 		{Name: "VOA Tiếng Việt", URL: "https://www.voatiengviet.com/api/zbuyil-vomx-tpeqpum", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "RFA Tiếng Việt", URL: "https://www.rfa.org/arc/outboundfeeds/vietnamese/rss/", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "RFI Tiếng Việt", URL: "https://www.rfi.fr/vi/rss", Category: "world", CountryCode: "FR", CountryName: "Pháp"},
-		{Name: "KBS World Tiếng Việt", URL: "https://world.kbs.co.kr/rss/rss_vi.xml", Category: "world", CountryCode: "KR", CountryName: "Hàn Quốc"},
+		{Name: "KBS World Tiếng Việt", URL: "https://world.kbs.co.kr/rss/rss_news.htm?lang=v", Category: "world", CountryCode: "KR", CountryName: "Hàn Quốc"},
 		{Name: "The Verge", URL: "https://www.theverge.com/rss/index.xml", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "TechCrunch", URL: "https://techcrunch.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "Engadget", URL: "https://www.engadget.com/rss.xml", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
@@ -202,6 +202,9 @@ func migrate(db *sql.DB) error {
 	}
 	sources = append(sources, scmp.Feeds...)
 	if _, err = db.Exec(`UPDATE sources SET feed_url=? WHERE name=? AND feed_url=?`, "https://news.ycombinator.com/rss", "Hacker News", "https://hnrss.org/frontpage"); err != nil {
+		return err
+	}
+	if _, err = db.Exec(`UPDATE sources SET feed_url=? WHERE name=? AND feed_url=?`, "https://world.kbs.co.kr/rss/rss_news.htm?lang=v", "KBS World Tiếng Việt", "https://world.kbs.co.kr/rss/rss_vi.xml"); err != nil {
 		return err
 	}
 	for _, source := range sources {
