@@ -62,6 +62,26 @@
   object-fit: cover;
 }
 
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-citation,
+.detail-citation {
+  color: var(--muted);
+  font: 11px system-ui;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.detail-citation {
+  display: inline-block;
+  margin: -6px 0 4px;
+}
+
 .translation-loading {
   display: flex;
   align-items: center;
@@ -90,5 +110,12 @@
 }
 
 .listing-page.hidden {
+  display: none;
+}
+
+/* The product displays original reporting only at its linked publisher source. */
+.article-content,
+.article-image-gallery,
+.detail-image {
   display: none;
 }

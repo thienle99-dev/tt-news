@@ -29,6 +29,7 @@ import (
 	"github.com/mmcdole/gofeed"
 	_ "modernc.org/sqlite"
 	"telegram-news/internal/articletext"
+	translationservice "telegram-news/internal/translation"
 )
 
 //go:embed migrations/*.sql static/*
@@ -174,6 +175,7 @@ func jsonErr(w http.ResponseWriter, status int, msg string) {
 func spa(files fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(files))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet")
 		p := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if p == "." {
 			p = ""
@@ -573,23 +575,22 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		if image == "" && len(item.Enclosures) > 0 {
 			image = item.Enclosures[0].URL
 		}
-		summary := articletext.PlainText(item.Description)
-		if summary == "" {
-			summary = articletext.PlainText(item.Content)
+		body := articletext.PlainText(item.Description)
+		if body == "" {
+			body = articletext.PlainText(item.Content)
 		}
-		description, imagesJSON := summary, "[]"
-		body, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link)
-		if fetchErr != nil {
+		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).Fetch(ctx, link); fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
-		} else {
-			if body.Text != "" {
-				description = body.Text
-			}
-			if encoded, marshalErr := json.Marshal(body.Images); marshalErr == nil {
-				imagesJSON = string(encoded)
-			}
+		} else if extracted != "" {
+			body = extracted
 		}
-		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, imagesJSON, published.UTC().Format(time.RFC3339))
+		summary := ""
+		if brief, summaryErr := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(ctx, title, body); summaryErr != nil {
+			log.Printf("rss summary %s: %v", link, summaryErr)
+		} else {
+			title, summary = brief.Title, brief.Summary
+		}
+		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, "[]", published.UTC().Format(time.RFC3339))
 		if e != nil {
 			return inserted, e
 		}

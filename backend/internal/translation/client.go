@@ -20,6 +20,58 @@ type Fields struct {
 	Title, Description, Summary string
 }
 
+// Summarize rewrites a source article into an original title and a short 3-5 point brief.
+func (c Client) Summarize(ctx context.Context, title, body string) (Fields, error) {
+	if c.URL == "" || c.APIKey == "" {
+		return Fields{}, errors.New("translation service is not configured")
+	}
+	if len(body) > 12000 {
+		body = body[:12000]
+	}
+	instruction := `Write an original, factual news brief from the supplied source material. Do not copy phrases longer than necessary. Return 3 to 5 concise bullet points. Your entire response must be one JSON object with string keys "title" and "summary" only.`
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("source title: %s\n\nsource material:\n%s", title, body)}}, "temperature": 0.3, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return Fields{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, strings.NewReader(string(data)))
+	if err != nil {
+		return Fields{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return Fields{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return Fields{}, fmt.Errorf("summary endpoint returned %s", res.Status)
+	}
+	response, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return Fields{}, err
+	}
+	content, err := completionContent(response)
+	if err != nil {
+		return Fields{}, err
+	}
+	var result Fields
+	if err = json.Unmarshal([]byte(content), &result); err != nil {
+		return Fields{}, fmt.Errorf("decode summary: %w", err)
+	}
+	result.Title, result.Summary = strings.TrimSpace(result.Title), strings.TrimSpace(result.Summary)
+	if result.Title == "" || result.Summary == "" {
+		return Fields{}, errors.New("summary response is missing title or summary")
+	}
+	return result, nil
+}
+
 func (c Client) Vietnamese(ctx context.Context, fields Fields) (Fields, error) {
 	if c.URL == "" || c.APIKey == "" {
 		return Fields{}, errors.New("translation service is not configured")

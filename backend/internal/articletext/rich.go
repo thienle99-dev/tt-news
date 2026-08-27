@@ -59,7 +59,11 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 		return Content{}, err
 	}
 	root := richRoot(doc)
-	return Content{Text: selectionText(root), Images: contentImages(root, res.Request.URL)}, nil
+	base := req.URL
+	if res.Request != nil && res.Request.URL != nil {
+		base = res.Request.URL
+	}
+	return Content{Text: selectionText(root), Images: contentImages(root, base)}, nil
 }
 
 func richRoot(doc *goquery.Document) *goquery.Selection {
