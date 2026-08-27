@@ -332,38 +332,15 @@ function FormattedDescription({ value }: { value: string }) {
     </div>
   );
 }
-const highlightPattern =
-  /(\$?\d+(?:[.,/]\d+)*(?:\s?(?:USD|CNY|nhân dân tệ|yuan|ml|mL|lít|L|°C|giờ|phút|ngày|tháng|năm))?|PPSU|316L|titanium|thép không gỉ|stainless steel|hệ thống khóa tự động|automatic locking system|giữ nóng|giữ lạnh)/gi;
-function HighlightedText({ value }: { value: string }) {
+function AIFormattedText({ value }: { value: string }) {
   return (
     <>
-      {value.split(highlightPattern).map((part, index) =>
-        index % 2 ? (
-          <mark className="summary-highlight" key={index}>
-            {part}
-          </mark>
+      {value.split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={index}>{part.slice(2, -2)}</strong>
         ) : (
           part
         ),
-      )}
-    </>
-  );
-}
-function SummaryPoint({ value }: { value: string }) {
-  const sentenceEnd = value.search(/[.!?](?:\s|$)/);
-  const leadEnd = sentenceEnd >= 0 ? sentenceEnd + 1 : value.length;
-  const lead = value.slice(0, leadEnd).trim();
-  const detail = value.slice(leadEnd).trim();
-  return (
-    <>
-      <strong className="summary-lead">
-        <HighlightedText value={lead} />
-      </strong>
-      {detail && (
-        <>
-          {" "}
-          <HighlightedText value={detail} />
-        </>
       )}
     </>
   );
@@ -385,13 +362,13 @@ function SummaryContent({
     <ul className="summary-list">
       {points.map((point, index) => (
         <li key={index}>
-          <SummaryPoint value={point} />
+          <AIFormattedText value={point} />
         </li>
       ))}
     </ul>
   ) : (
     <p className="summary-text">
-      <HighlightedText value={content} />
+      <AIFormattedText value={content} />
     </p>
   );
 }

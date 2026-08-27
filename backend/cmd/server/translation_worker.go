@@ -42,7 +42,7 @@ func (s *server) processTranslationJob(ctx context.Context) (bool, error) {
 	defer s.translationMu.Unlock()
 	var articleID int64
 	var title, description, summary string
-	err := s.db.QueryRowContext(ctx, `SELECT tj.article_id,a.title,a.description,a.summary FROM translation_jobs tj JOIN articles a ON a.id=tj.article_id WHERE tj.language_code='vi' ORDER BY tj.created_at,tj.article_id LIMIT 1`).Scan(&articleID, &title, &description, &summary)
+	err := s.db.QueryRowContext(ctx, `SELECT tj.article_id,a.title,a.description,a.summary FROM translation_jobs tj JOIN articles a ON a.id=tj.article_id WHERE tj.language_code='vi' ORDER BY tj.created_at DESC,tj.article_id DESC LIMIT 1`).Scan(&articleID, &title, &description, &summary)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
