@@ -738,6 +738,10 @@ function GoldRates({ locale }: { locale: Locale }) {
     </section>
   );
 }
+function ArticleCategories({ article, locale }: { article: Article; locale: Locale }) {
+  const labels = article.categories?.length ? article.categories : [article.category];
+  return <span className="category-labels" aria-label={locale === "vi" ? "Thể loại" : "Categories"}>{labels.map(slug => <span className={`category-label category-${slug}`} key={slug}>{category(slug, locale)}</span>)}</span>;
+}
 function Card({
   article,
   hero,
@@ -779,9 +783,7 @@ function Card({
           </div>
           <h2>{article.title}</h2>
           {article.summary && <p>{textOnly(article.summary)}</p>}
-          <span className={`category-label category-${article.category}`}>
-            {category(article.category, locale)}
-          </span>
+          <ArticleCategories article={article} locale={locale} />
         </div>
       </button>
       <a
@@ -903,9 +905,7 @@ function Detail({
       <p className="eyebrow">
         {article.source} · {publishedOn(article.published_at, locale)}
       </p>
-      <span className={`category-label category-${article.category}`}>
-        {category(article.category, locale)}
-      </span>
+      <ArticleCategories article={article} locale={locale} />
       <h1>{title}</h1>
       <a
         className="detail-citation"

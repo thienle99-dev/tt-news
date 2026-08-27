@@ -87,7 +87,7 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 }
 
 func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]translationservice.FeaturedCandidate, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,a.summary,s.name,c.slug,a.published_at FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE s.enabled=1 AND c.slug<>'business' AND a.summary<>'' AND a.published_at>=? ORDER BY a.published_at DESC,a.id DESC`, since.Format(time.RFC3339))
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,a.summary,s.name,c.slug,a.published_at FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE s.enabled=1 AND a.summary<>'' AND a.published_at>=? ORDER BY a.published_at DESC,a.id DESC`, since.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (s *server) featuredTopicArticles(ctx context.Context, topicID int64, langu
 		args = append(args, user.ID)
 	}
 	args = append(args, topicID)
-	query := fmt.Sprintf(`SELECT a.id,%s,a.description,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM featured_topic_articles fta JOIN articles a ON a.id=fta.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE fta.topic_id=? AND s.enabled=1 AND c.slug<>'business' ORDER BY fta.position`, title, summary, saved, read, translationJoin)
+	query := fmt.Sprintf(`SELECT a.id,%s,a.description,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM featured_topic_articles fta JOIN articles a ON a.id=fta.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE fta.topic_id=? AND s.enabled=1 ORDER BY fta.position`, title, summary, saved, read, translationJoin)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -273,5 +273,11 @@ func (s *server) featuredTopicArticles(ctx context.Context, topicID int64, langu
 		item.IsRead = isRead == 1
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if err = s.attachArticleCategoriesList(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
