@@ -644,6 +644,10 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			result.Invalid++
 			continue
 		}
+		if isObviousJunk(title) {
+			result.Invalid++
+			continue
+		}
 		var existingArticleID int64
 		var existingImage string
 		e = s.db.QueryRowContext(ctx, "SELECT id,image_url FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage)

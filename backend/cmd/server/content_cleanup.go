@@ -12,10 +12,7 @@ import (
 const cleanupReviewVersion = "weather-entertainment-v1"
 
 func (s *server) runContentCleanupWorker(ctx context.Context) {
-	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
-		log.Print("content cleanup worker disabled: set AI_URL and AI_KEY to enable it")
-		return
-	}
+	if s.cfg.AIURL == "" || s.cfg.AIKey == "" { log.Print("content cleanup AI review disabled; rule-based spam filtering remains enabled") }
 	s.cleanupJunkArticles(ctx)
 	ticker := time.NewTicker(s.cfg.ContentCleanupInterval)
 	defer ticker.Stop()
@@ -35,6 +32,7 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 	candidates := []candidate{}
 	for rows.Next() { var item candidate; if err = rows.Scan(&item.id, &item.title, &item.summary); err != nil { log.Printf("content cleanup read: %v", err); return }; candidates = append(candidates, item) }
 	if err = rows.Err(); err != nil { log.Printf("content cleanup rows: %v", err); return }
+	aiEnabled := s.cfg.AIURL != "" && s.cfg.AIKey != ""
 	client := translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}
 	removed, removedWithoutAI, reviewed := 0, 0, 0
 	for _, item := range candidates {
@@ -44,6 +42,7 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 			if deleted { removed++; removedWithoutAI++ }
 			continue
 		}
+		if !aiEnabled { continue }
 		junk, reviewErr := client.IsJunk(ctx, item.title, item.summary)
 		if reviewErr != nil { log.Printf("content cleanup review %d: %v", item.id, reviewErr); continue }
 		reviewed++
@@ -71,6 +70,8 @@ func isObviousJunk(title string) bool {
 		"weather forecast", "weather outlook", "weather update", "weekly weather", "horoscope",
 		"podcast:", "podcast |", "listen:", "watch:", "video:", "photo gallery", "in pictures",
 		"celebrity", "red carpet", "fashion week", "recipe", "restaurant review", "travel guide",
+		"sponsored", "advertisement", "advertorial", "paid post", "promotion", "promotional",
+		"coupon", "discount code", "deal of the day", "giveaway", "newsletter", "sign up",
 	} {
 		if strings.Contains(value, phrase) { return true }
 	}
