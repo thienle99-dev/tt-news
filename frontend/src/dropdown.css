@@ -75,3 +75,7 @@
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner { animation: none; }
 }
+
+.listing-page.hidden {
+  display: none;
+}

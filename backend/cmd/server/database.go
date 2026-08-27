@@ -78,6 +78,11 @@ func migrate(db *sql.DB) error {
 		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "BBC World", URL: "https://feeds.bbci.co.uk/news/world/rss.xml", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		{Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business", CountryCode: "GB", CountryName: "Vương quốc Anh"},
+		{Name: "People's Daily – Latest", URL: "http://www.people.com.cn/rss/ywkx.xml", Category: "world", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "People's Daily – Politics", URL: "http://www.people.com.cn/rss/politics.xml", Category: "world", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "People's Daily – World", URL: "http://www.people.com.cn/rss/world.xml", Category: "world", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "People's Daily – Society", URL: "http://www.people.com.cn/rss/society.xml", Category: "society", CountryCode: "CN", CountryName: "Trung Quốc"},
+		{Name: "People's Daily – Military", URL: "http://www.people.com.cn/rss/military.xml", Category: "world", CountryCode: "CN", CountryName: "Trung Quốc"},
 	}
 	sources = append(sources, scmp.Feeds...)
 	for _, source := range sources {
