@@ -71,23 +71,30 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body := article.Description
 	extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(r.Context(), article.URL)
 	if fetchErr != nil {
 		log.Printf("resummarize article %d: %v", article.ID, fetchErr)
-		jsonErr(w, http.StatusBadGateway, "could not fetch full article")
-		return
+		if len(body) < 300 {
+			jsonErr(w, http.StatusBadGateway, "could not fetch full article")
+			return
+		}
+		log.Printf("resummarize article %d: using stored full RSS content", article.ID)
+	} else if len(extracted.Text) >= 300 {
+		body = extracted.Text
 	}
-	if len(extracted.Text) < 300 {
+	if len(body) < 300 {
 		jsonErr(w, http.StatusBadGateway, "full article content is unavailable")
 		return
 	}
-	brief, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(r.Context(), article.Title, extracted.Text)
+	log.Printf("resummarize article id=%d: sending AI request (content_chars=%d model=%q)", article.ID, len(body), s.cfg.AIModel)
+	brief, err := (translationservice.Client{URL: s.cfg.AIURL, APIKey: s.cfg.AIKey, Model: s.cfg.AIModel}).Summarize(r.Context(), article.Title, body)
 	if err != nil {
-		log.Printf("resummarize article %d: %v", article.ID, err)
+		log.Printf("resummarize article id=%d: AI request failed: %v", article.ID, err)
 		jsonErr(w, http.StatusServiceUnavailable, "could not resummarize article")
 		return
 	}
-	if _, err = s.db.ExecContext(r.Context(), `UPDATE articles SET title=?,description=?,summary=? WHERE id=?`, brief.Title, extracted.Text, brief.Summary, article.ID); err != nil {
+	if _, err = s.db.ExecContext(r.Context(), `UPDATE articles SET title=?,description=?,summary=? WHERE id=?`, brief.Title, body, brief.Summary, article.ID); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not save summary")
 		return
 	}

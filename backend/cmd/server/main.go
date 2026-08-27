@@ -705,8 +705,8 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		}
 		contentImages := []string{}
 		description := articletext.PlainText(item.Description)
-		if description == "" {
-			description = articletext.PlainText(item.Content)
+		if content := articletext.PlainText(item.Content); len(content) > len(description) {
+			description = content
 		}
 		body := description
 		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
@@ -728,7 +728,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, marshalErr
 		}
 		if existingArticleID != 0 {
-			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, existingArticleID); e != nil {
+			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN length(?)>length(description) THEN ? ELSE description END WHERE id=?`, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, existingArticleID); e != nil {
 				return result, e
 			}
 			result.Existing++

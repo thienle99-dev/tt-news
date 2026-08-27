@@ -139,7 +139,7 @@ Write a specific, neutral title that accurately reflects the central event witho
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return Fields{}, fmt.Errorf("summary endpoint returned %s", res.Status)
+		return Fields{}, endpointError("summary", res)
 	}
 	rawResponse, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
@@ -175,6 +175,27 @@ Write a specific, neutral title that accurately reflects the central event witho
 		return Fields{}, errors.New("summary response is missing title or summary")
 	}
 	return result, nil
+}
+
+func endpointError(operation string, res *http.Response) error {
+	body, err := io.ReadAll(io.LimitReader(res.Body, 8<<10))
+	if err != nil {
+		return fmt.Errorf("%s endpoint returned %s; could not read error body: %w", operation, res.Status, err)
+	}
+	details := []string{fmt.Sprintf("%s endpoint returned %s", operation, res.Status)}
+	for _, header := range []string{"Retry-After", "X-Request-ID", "Request-ID", "CF-Ray"} {
+		if value := strings.TrimSpace(res.Header.Get(header)); value != "" {
+			details = append(details, header+"="+value)
+		}
+	}
+	message := strings.Join(strings.Fields(string(body)), " ")
+	if len(message) > 1024 {
+		message = message[:1024] + "…"
+	}
+	if message != "" {
+		details = append(details, "body="+fmt.Sprintf("%q", message))
+	}
+	return errors.New(strings.Join(details, "; "))
 }
 
 func (c Client) Vietnamese(ctx context.Context, fields Fields) (Fields, error) {
