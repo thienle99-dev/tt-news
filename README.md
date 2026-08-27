@@ -83,8 +83,14 @@ Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-
 | GET | `/api/categories` | Danh sách category |
 | GET | `/api/saved` | Bài đã lưu (Telegram auth) |
 | POST/DELETE | `/api/saved/:id` | Lưu/bỏ lưu (Telegram auth) |
+| POST | `/api/articles/:id/reading` | Ghi nhận bài đang đọc (Telegram auth) |
+| POST | `/api/articles/:id/read` | Đánh dấu bài đã đọc (Telegram auth) |
+| GET | `/api/reading-history` | Lịch sử đọc, mới nhất trước (Telegram auth) |
+| DELETE | `/api/reading-history` | Xoá toàn bộ lịch sử đọc (Telegram auth) |
 
 Các API Saved nhận `Authorization: tma <Telegram initData>`. Backend kiểm tra HMAC Telegram, `auth_date` (mặc định tối đa 24 giờ) và upsert user trước khi truy cập dữ liệu.
+
+`GET /api/articles` cũng trả về `is_read`; thêm `hide_read=1` để không trả các bài người dùng đã đánh dấu đã đọc. Mở trang chi tiết sẽ ghi một mục “Đọc tiếp”; người dùng có thể đánh dấu hoàn tất, xem lại lịch sử, hoặc xoá toàn bộ lịch sử từ thanh điều hướng của Mini App.
 
 ## Thêm RSS source
 

@@ -34,6 +34,7 @@ type article struct {
 	Category      string   `json:"category"`
 	PublishedAt   string   `json:"published_at"`
 	IsSaved       bool     `json:"is_saved"`
+	IsRead        bool     `json:"is_read"`
 }
 
 type translation struct {

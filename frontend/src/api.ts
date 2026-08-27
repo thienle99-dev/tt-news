@@ -24,5 +24,9 @@ export const api = {
   featured: (language: string) => request<FeaturedBrief | null>(`/api/featured?lang=${encodeURIComponent(language)}`),
   saved: (language: string) => request<Article[]>(`/api/saved?lang=${encodeURIComponent(language)}`),
   toggleSaved: (article: Article) => request<{ saved: boolean }>(`/api/saved/${article.id}`, { method: article.is_saved ? 'DELETE' : 'POST' }),
+  startReading: (id: number) => request<{ status: string; is_read: boolean }>(`/api/articles/${id}/reading`, { method: 'POST' }),
+  markRead: (id: number) => request<{ status: string; is_read: boolean }>(`/api/articles/${id}/read`, { method: 'POST' }),
+  readingHistory: (language: string) => request<Article[]>(`/api/reading-history?lang=${encodeURIComponent(language)}`),
+  clearReadingHistory: () => request<{ cleared: boolean }>('/api/reading-history', { method: 'DELETE' }),
   me: () => request<TelegramUser>('/api/me'),
 }

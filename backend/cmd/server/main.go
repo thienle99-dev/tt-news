@@ -190,9 +190,13 @@ func (s *server) routes() http.Handler {
 			r.Use(s.requireUser)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
 			r.Post("/articles/{id}/resummarize", s.resummarizeArticle)
+			r.Post("/articles/{id}/reading", s.startReading)
+			r.Post("/articles/{id}/read", s.markRead)
 			r.Get("/saved", s.saved)
 			r.Post("/saved/{id}", s.save)
 			r.Delete("/saved/{id}", s.unsave)
+			r.Get("/reading-history", s.readingHistory)
+			r.Delete("/reading-history", s.clearReadingHistory)
 			r.Get("/me", s.me)
 		})
 	})
@@ -300,9 +304,12 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	}
 	u, logged := s.optionalUser(r)
 	savedJoin := "0"
+	readJoin := "0"
 	args := []any{}
 	if logged {
 		savedJoin = "EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?)"
+		args = append(args, u.ID)
+		readJoin = "EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')"
 		args = append(args, u.ID)
 	}
 	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
@@ -341,8 +348,12 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		like := "%" + term + "%"
 		args = append(args, like, like, like)
 	}
+	if q.Get("hide_read") == "1" && logged {
+		where = append(where, "NOT EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')")
+		args = append(args, u.ID)
+	}
 	args = append(args, limit, offset)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, title, description, summary, savedJoin, translationJoin, strings.Join(where, " AND "))
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "))
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -352,12 +363,13 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	items := []article{}
 	for rows.Next() {
 		var a article
-		var saved int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved); e != nil {
+		var saved, read int
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved, &read); e != nil {
 			jsonErr(w, 500, "could not read articles")
 			return
 		}
 		a.IsSaved = saved == 1
+		a.IsRead = read == 1
 		items = append(items, a)
 	}
 	jsonOut(w, 200, items)
@@ -366,7 +378,17 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a article
 	var imageJSON string
-	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND c.slug<>'business'`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
+	saved, read := "0", "0"
+	args := []any{}
+	if u, ok := s.optionalUser(r); ok {
+		saved = "EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?)"
+		read = "EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')"
+		args = append(args, u.ID, u.ID)
+	}
+	args = append(args, id)
+	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND c.slug<>'business'`, saved, read)
+	var isSaved, isRead int
+	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &isSaved, &isRead)
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -376,6 +398,7 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.ContentImages = decodeContentImages(imageJSON)
+	a.IsSaved, a.IsRead = isSaved == 1, isRead == 1
 	jsonOut(w, 200, a)
 }
 
@@ -438,13 +461,16 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	language := r.URL.Query().Get("lang")
 	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
+	readJoin := "EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')"
 	args := []any{u.ID}
 	if language == "vi" {
 		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
-		args = []any{language, u.ID}
+		args = []any{u.ID, language, u.ID}
+	} else {
+		args = append(args, u.ID)
 	}
-	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 AND c.slug<>'business' ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1,%s FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 AND c.slug<>'business' ORDER BY sa.created_at DESC`, title, description, summary, readJoin, translationJoin)
 	rows, e := s.db.QueryContext(r.Context(), query, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
@@ -454,12 +480,13 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 	out := []article{}
 	for rows.Next() {
 		var a article
-		var x int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &x); e != nil {
+		var saved, read int
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved, &read); e != nil {
 			jsonErr(w, 500, "could not read saved articles")
 			return
 		}
 		a.IsSaved = true
+		a.IsRead = read == 1
 		out = append(out, a)
 	}
 	jsonOut(w, 200, out)
@@ -491,6 +518,101 @@ func (s *server) unsave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"saved": false})
+}
+
+// startReading creates or refreshes an entry in the user's history. A completed
+// article remains completed when it is opened again, so the read state is never
+// accidentally reverted by a page refresh.
+func (s *server) startReading(w http.ResponseWriter, r *http.Request) {
+	s.setReadingStatus(w, r, "reading")
+}
+
+func (s *server) markRead(w http.ResponseWriter, r *http.Request) {
+	s.setReadingStatus(w, r, "read")
+}
+
+func (s *server) setReadingStatus(w http.ResponseWriter, r *http.Request, status string) {
+	u := currentUser(r)
+	id := chi.URLParam(r, "id")
+	query := `INSERT INTO article_reading_history(user_id,article_id,status,read_at)
+		SELECT ?,id,?,CASE WHEN ?='read' THEN CURRENT_TIMESTAMP ELSE NULL END FROM articles WHERE id=?
+		ON CONFLICT(user_id,article_id) DO UPDATE SET
+			last_opened_at=CURRENT_TIMESTAMP,
+			status=CASE WHEN article_reading_history.status='read' OR excluded.status='read' THEN 'read' ELSE 'reading' END,
+			read_at=CASE WHEN article_reading_history.status='read' OR excluded.status='read' THEN COALESCE(article_reading_history.read_at,CURRENT_TIMESTAMP) ELSE NULL END`
+	result, err := s.db.ExecContext(r.Context(), query, u.ID, status, status, id)
+	if err != nil {
+		jsonErr(w, 500, "could not update reading history")
+		return
+	}
+	count, _ := result.RowsAffected()
+	if count == 0 {
+		jsonErr(w, 404, "article not found")
+		return
+	}
+	jsonOut(w, 200, map[string]any{"status": status, "is_read": status == "read"})
+}
+
+func (s *server) readingHistory(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	status := r.URL.Query().Get("status")
+	if status != "reading" && status != "read" {
+		status = ""
+	}
+	limit := intEnvFrom(r.URL.Query().Get("limit"), 30)
+	if limit < 1 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	language := r.URL.Query().Get("lang")
+	translationJoin, title, description, summary := "", "a.title", "a.description", "a.summary"
+	args := []any{}
+	if language == "vi" {
+		translationJoin = " LEFT JOIN article_translations tr ON tr.article_id=a.id AND tr.language_code=?"
+		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
+		args = append(args, language)
+	}
+	args = append(args, u.ID)
+	where := "arh.user_id=?"
+	if status != "" {
+		where += " AND arh.status=?"
+		args = append(args, status)
+	}
+	args = append(args, limit)
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?),arh.status FROM article_reading_history arh JOIN articles a ON a.id=arh.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s AND s.enabled=1 AND c.slug<>'business' ORDER BY arh.last_opened_at DESC LIMIT ?`, title, description, summary, translationJoin, where)
+	// The saved-article predicate appears before the translation join in the
+	// SELECT clause, so its parameter must be first.
+	args = append([]any{u.ID}, args...)
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		jsonErr(w, 500, "could not load reading history")
+		return
+	}
+	defer rows.Close()
+	items := []article{}
+	for rows.Next() {
+		var a article
+		var saved int
+		var itemStatus string
+		if err = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved, &itemStatus); err != nil {
+			jsonErr(w, 500, "could not read reading history")
+			return
+		}
+		a.IsSaved, a.IsRead = saved == 1, itemStatus == "read"
+		items = append(items, a)
+	}
+	jsonOut(w, 200, items)
+}
+
+func (s *server) clearReadingHistory(w http.ResponseWriter, r *http.Request) {
+	_, err := s.db.ExecContext(r.Context(), "DELETE FROM article_reading_history WHERE user_id=?", currentUser(r).ID)
+	if err != nil {
+		jsonErr(w, 500, "could not clear reading history")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"cleared": true})
 }
 func (s *server) me(w http.ResponseWriter, r *http.Request) { jsonOut(w, 200, currentUser(r)) }
 

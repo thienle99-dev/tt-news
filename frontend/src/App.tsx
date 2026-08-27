@@ -12,7 +12,7 @@ import type {
   Translation,
 } from "./types";
 
-type Tab = "home" | "featured" | "saved" | "settings";
+type Tab = "home" | "featured" | "saved" | "history" | "settings";
 type Locale = "en" | "vi";
 type Theme = "light" | "dark";
 type Filters = {
@@ -52,6 +52,11 @@ const text = {
     masthead: "SIGNAL BRIEF",
     news: "Briefs",
     saved: "Saved",
+    history: "Continue reading",
+    clearHistory: "Clear history",
+    hideRead: "Hide read",
+    showRead: "Show read",
+    markRead: "Mark as read",
     filter: "Filter",
     newest: "Latest",
     all: "All",
@@ -107,6 +112,11 @@ const text = {
     masthead: "SIGNAL BRIEF",
     news: "Tóm tắt",
     saved: "Đã lưu",
+    history: "Đọc tiếp",
+    clearHistory: "Xoá lịch sử",
+    hideRead: "Ẩn bài đã đọc",
+    showRead: "Hiện bài đã đọc",
+    markRead: "Đánh dấu đã đọc",
     filter: "Lọc",
     newest: "Mới nhất",
     all: "Tất cả",
@@ -256,7 +266,8 @@ function Icon({
     | "close"
     | "pen"
     | "moon"
-    | "sun";
+    | "sun"
+    | "history";
   filled?: boolean;
 }) {
   const common = {
@@ -296,6 +307,7 @@ function Icon({
         <path {...common} d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
       </>
     ),
+    history: <><path {...common} d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5" /><path {...common} d="M4 4v4.5h4.5M12 7v5l3 2" /></>,
     settings: (
       <>
         <circle {...common} cx="12" cy="12" r="3" />
@@ -714,6 +726,7 @@ function Detail({
   > | null>(null);
   const [resummarizing, setResummarizing] = useState(false);
   const [resummarizeFailed, setResummarizeFailed] = useState(false);
+  const [isRead, setIsRead] = useState(article.is_read);
   const t = text[locale];
   const translate = () => {
     if (locale !== "vi") return;
@@ -744,8 +757,12 @@ function Detail({
     setFailed(false);
     setManualBrief(null);
     setResummarizeFailed(false);
+    setIsRead(article.is_read);
     if (locale === "vi") translate();
   }, [article.id, locale]);
+  useEffect(() => {
+    void api.startReading(article.id);
+  }, [article.id]);
   const title = translation?.title || manualBrief?.title || article.title;
   const summary =
     translation?.summary || manualBrief?.summary || article.summary;
@@ -831,6 +848,11 @@ function Detail({
         </section>
       }
       {<RSSDescription description={article.description} locale={locale} />}
+      {!isRead && (
+        <button className="text-button" onClick={() => api.markRead(article.id).then(() => setIsRead(true)).catch(() => {})}>
+          {t.markRead}
+        </button>
+      )}
       <button className="primary source-link" onClick={() => open(article.url)}>
         {t.readOriginal}
         <Icon name="arrow-up-right" />
@@ -840,6 +862,7 @@ function Detail({
 }
 function Home({
   saved,
+  history,
   locale,
   setLocale,
   theme,
@@ -847,6 +870,7 @@ function Home({
   openDetail,
 }: {
   saved?: boolean;
+  history?: boolean;
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
@@ -865,6 +889,7 @@ function Home({
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [reload, setReload] = useState(0);
+  const [hideRead, setHideRead] = useState(false);
   const t = text[locale];
   const params = useMemo(
     () =>
@@ -876,8 +901,9 @@ function Home({
         ...(filter.source && { source: filter.source }),
         ...(filter.country && { country: filter.country }),
         ...(filter.query && { q: filter.query }),
+        ...(hideRead && { hide_read: "1" }),
       }),
-    [filter, locale, offset],
+    [filter, hideRead, locale, offset],
   );
   useEffect(() => {
     const timer = window.setTimeout(
@@ -890,10 +916,10 @@ function Home({
     return () => window.clearTimeout(timer);
   }, [search]);
   useEffect(() => {
-    if (!saved) replaceFiltersURL(filter);
-  }, [filter, saved]);
+    if (!saved && !history) replaceFiltersURL(filter);
+  }, [filter, saved, history]);
   useEffect(() => {
-    if (saved) return;
+    if (saved || history) return;
     const syncFilters = () => {
       const next = filtersFromURL();
       setFilter((current) =>
@@ -908,9 +934,9 @@ function Home({
     };
     window.addEventListener("popstate", syncFilters);
     return () => window.removeEventListener("popstate", syncFilters);
-  }, [saved]);
+  }, [saved, history]);
   useEffect(() => {
-    if (!saved)
+    if (!saved && !history)
       Promise.all([api.categories(), api.sources(), api.countries()])
         .then(([a, b, c]) => {
           setCats(a);
@@ -918,7 +944,7 @@ function Home({
           setCountryList(c);
         })
         .catch(() => {});
-  }, [saved]);
+  }, [saved, history]);
   useEffect(() => {
     setOffset(0);
     setHasMore(true);
@@ -929,11 +955,11 @@ function Home({
       setLoading(true);
       setError(false);
     } else setLoadingMore(true);
-    (saved ? api.saved(locale) : api.articles(params))
+    (history ? api.readingHistory(locale) : saved ? api.saved(locale) : api.articles(params))
       .then((next) => {
         if (!active) return;
         setItems((current) => (offset === 0 ? next : [...current, ...next]));
-        setHasMore(!saved && next.length === 30);
+        setHasMore(!saved && !history && next.length === 30);
       })
       .catch(() => {
         if (active) setError(true);
@@ -947,9 +973,9 @@ function Home({
     return () => {
       active = false;
     };
-  }, [saved, locale, params, offset, reload]);
+  }, [saved, history, locale, params, offset, reload]);
   useEffect(() => {
-    if (saved) return;
+    if (saved || history) return;
     const loadMore = () => {
       if (
         !loading &&
@@ -963,7 +989,15 @@ function Home({
     window.addEventListener("scroll", loadMore, { passive: true });
     loadMore();
     return () => window.removeEventListener("scroll", loadMore);
-  }, [saved, loading, loadingMore, hasMore]);
+  }, [saved, history, loading, loadingMore, hasMore]);
+  const clearHistory = async () => {
+    try {
+      await api.clearReadingHistory();
+      setItems([]);
+    } catch {
+      setError(true);
+    }
+  };
   const toggle = async (article: Article) => {
     setItems((current) =>
       current.map((item) =>
@@ -984,7 +1018,7 @@ function Home({
       );
     }
   };
-  const hero = !saved ? items[0] : undefined;
+  const hero = !saved && !history ? items[0] : undefined;
   const list = hero ? items.slice(1) : items;
   const categoryOptions = [
     { value: "", label: t.allCategories },
@@ -1009,14 +1043,15 @@ function Home({
       <header className="masthead">
         <div>
           <p>{t.masthead}</p>
-          <h1>{saved ? t.saved : t.news}</h1>
+          <h1>{history ? t.history : saved ? t.saved : t.news}</h1>
         </div>
         <div className="header-actions">
           <LanguagePicker locale={locale} setLocale={setLocale} />
           <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
+          {!saved && !history && <button className="text-button" onClick={() => setHideRead(value => !value)}>{hideRead ? t.showRead : t.hideRead}</button>}
         </div>
       </header>
-      {!saved && (
+      {!saved && !history && (
         <FilterControls
           locale={locale}
           filter={filter}
@@ -1028,7 +1063,8 @@ function Home({
           categories={cats}
         />
       )}
-      {!saved && <GoldRates locale={locale} />}
+      {!saved && !history && <GoldRates locale={locale} />}
+      {history && <button className="text-button" onClick={clearHistory}>{t.clearHistory}</button>}
       {loading ? (
         <p className="state" role="status">
           {t.loading}
@@ -1059,7 +1095,7 @@ function Home({
           )}
           <div className="feed">
             <div className="section-head">
-              <h3>{saved ? t.yourArticles : t.latest}</h3>
+              <h3>{history ? t.history : saved ? t.yourArticles : t.latest}</h3>
               <span>
                 {list.length} {t.articles}
               </span>
@@ -1394,6 +1430,7 @@ export default function App() {
     ["home", "home", t.home],
     ["featured", "sparkles", t.featuredNews],
     ["saved", "bookmark", t.saved],
+    ["history", "history", t.history],
     ["settings", "settings", t.settings],
   ];
   return (
@@ -1425,6 +1462,16 @@ export default function App() {
           {tab === "saved" && (
             <Home
               saved
+              locale={locale}
+              setLocale={setLocale}
+              theme={theme}
+              toggleTheme={toggleTheme}
+              openDetail={openDetail}
+            />
+          )}
+          {tab === "history" && (
+            <Home
+              history
               locale={locale}
               setLocale={setLocale}
               theme={theme}
