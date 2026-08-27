@@ -84,6 +84,9 @@ func rssItemCategories(categories []string, fallback string) []categoryDefinitio
 func rssItemCategory(categories []string, fallback string) string {
 	for _, raw := range categories {
 		slug := strings.ToLower(strings.TrimSpace(raw))
+		if alias, ok := rssCategoryAliases[slug]; ok {
+			slug = alias
+		}
 		for _, definition := range rssItemCategoryDefinitions {
 			if slug == definition.slug {
 				return definition.slug
