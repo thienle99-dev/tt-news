@@ -56,3 +56,17 @@ func TestFetchContentKeepsArticleImages(t *testing.T) {
 		t.Fatalf("images = %q, want %q", got, want)
 	}
 }
+
+func TestFetchContentUsesOpenGraphImageWhenArticleHasNoImage(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
+		body := `<html><head><meta property="og:image" content="/images/cover.jpg"></head><body><article><p>Article text</p></article></body></html>`
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	content, err := (Client{HTTPClient: client}).FetchContent(context.Background(), "https://example.test/article")
+	if err != nil {
+		t.Fatalf("FetchContent() error = %v", err)
+	}
+	if got, want := strings.Join(content.Images, ","), "https://example.test/images/cover.jpg"; got != want {
+		t.Fatalf("images = %q, want %q", got, want)
+	}
+}

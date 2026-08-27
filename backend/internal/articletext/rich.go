@@ -63,7 +63,11 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 	if res.Request != nil && res.Request.URL != nil {
 		base = res.Request.URL
 	}
-	return Content{Text: selectionText(root), Images: contentImages(root, base)}, nil
+	images := contentImages(root, base)
+	if len(images) == 0 {
+		images = metadataImages(doc, base)
+	}
+	return Content{Text: selectionText(root), Images: images}, nil
 }
 
 func richRoot(doc *goquery.Document) *goquery.Selection {
@@ -85,6 +89,20 @@ func contentImages(selection *goquery.Selection, base *url.URL) []string {
 		}
 		u, err := base.Parse(strings.TrimSpace(raw))
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || seen[u.String()] || len(images) == 12 {
+			return
+		}
+		seen[u.String()] = true
+		images = append(images, u.String())
+	})
+	return images
+}
+
+func metadataImages(doc *goquery.Document, base *url.URL) []string {
+	seen, images := map[string]bool{}, make([]string, 0, 1)
+	doc.Find("meta[property='og:image'], meta[name='twitter:image']").Each(func(_ int, meta *goquery.Selection) {
+		raw, _ := meta.Attr("content")
+		u, err := base.Parse(strings.TrimSpace(raw))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || seen[u.String()] {
 			return
 		}
 		seen[u.String()] = true

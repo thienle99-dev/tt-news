@@ -603,17 +603,20 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			result.Invalid++
 			continue
 		}
-		var exists int
-		e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE url=?", link).Scan(&exists)
+		var existingArticleID int64
+		var existingImage string
+		e = s.db.QueryRowContext(ctx, "SELECT id,image_url FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage)
 		if e == nil {
-			result.Existing++
-			continue
-		}
-		if !errors.Is(e, sql.ErrNoRows) {
+			if existingImage != "" {
+				result.Existing++
+				continue
+			}
+		} else if !errors.Is(e, sql.ErrNoRows) {
 			return result, e
 		}
 		titleFingerprint := articleFingerprint(title, 20)
-		if titleFingerprint != "" {
+		if existingArticleID == 0 && titleFingerprint != "" {
+			var exists int
 			e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE title_fingerprint=?", titleFingerprint).Scan(&exists)
 			if e == nil {
 				result.Existing++
@@ -641,17 +644,38 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		if image == "" && len(item.Enclosures) > 0 {
 			image = item.Enclosures[0].URL
 		}
+		contentImages := []string{}
 		body := articletext.PlainText(item.Description)
 		if body == "" {
 			body = articletext.PlainText(item.Content)
 		}
-		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).Fetch(ctx, link); fetchErr != nil {
+		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
-		} else if extracted != "" {
-			body = extracted
+		} else {
+			if extracted.Text != "" {
+				body = extracted.Text
+			}
+			contentImages = extracted.Images
+			if image == "" && len(contentImages) > 0 {
+				image = contentImages[0]
+			}
+		}
+		contentImagesJSON, marshalErr := json.Marshal(contentImages)
+		if marshalErr != nil {
+			return result, marshalErr
+		}
+		if existingArticleID != 0 {
+			if image != "" {
+				if _, e = s.db.ExecContext(ctx, "UPDATE articles SET image_url=?,content_images=? WHERE id=?", image, string(contentImagesJSON), existingArticleID); e != nil {
+					return result, e
+				}
+			}
+			result.Existing++
+			continue
 		}
 		contentFingerprint := articleFingerprint(body, 200)
 		if contentFingerprint != "" {
+			var exists int
 			e = s.db.QueryRowContext(ctx, "SELECT 1 FROM articles WHERE content_fingerprint=?", contentFingerprint).Scan(&exists)
 			if e == nil {
 				result.Existing++
@@ -669,7 +693,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			title, summary = brief.Title, brief.Summary
 			result.Summarized++
 		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, "[]", published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, src.CategoryID, title, "", summary, link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
 		if e != nil {
 			return result, e
 		}
