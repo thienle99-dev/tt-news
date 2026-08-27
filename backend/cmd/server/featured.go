@@ -112,10 +112,10 @@ func (s *server) featured(w http.ResponseWriter, r *http.Request) {
 	var title, intro string
 	if language == "vi" {
 		err := s.db.QueryRowContext(r.Context(), `SELECT b.id,b.generated_at,b.window_start,b.window_end,COALESCE(t.title,b.title),COALESCE(t.intro,b.intro) FROM featured_briefs b LEFT JOIN featured_brief_translations t ON t.brief_id=b.id AND t.language_code='vi' ORDER BY b.slot_start DESC LIMIT 1`).Scan(&brief.ID, &brief.GeneratedAt, &brief.WindowStart, &brief.WindowEnd, &title, &intro)
-		if errors.Is(err, sql.ErrNoRows) { jsonErr(w, 404, "featured briefing not found"); return }; if err != nil { jsonErr(w, 500, "could not load featured briefing"); return }
+		if errors.Is(err, sql.ErrNoRows) { jsonOut(w, 200, nil); return }; if err != nil { jsonErr(w, 500, "could not load featured briefing"); return }
 	} else {
 		err := s.db.QueryRowContext(r.Context(), `SELECT id,generated_at,window_start,window_end,title,intro FROM featured_briefs ORDER BY slot_start DESC LIMIT 1`).Scan(&brief.ID, &brief.GeneratedAt, &brief.WindowStart, &brief.WindowEnd, &title, &intro)
-		if errors.Is(err, sql.ErrNoRows) { jsonErr(w, 404, "featured briefing not found"); return }; if err != nil { jsonErr(w, 500, "could not load featured briefing"); return }
+		if errors.Is(err, sql.ErrNoRows) { jsonOut(w, 200, nil); return }; if err != nil { jsonErr(w, 500, "could not load featured briefing"); return }
 	}
 	brief.Title, brief.Intro = title, intro
 	rows, err := s.db.QueryContext(r.Context(), `SELECT ft.id,ft.position,COALESCE(tt.title,ft.title),COALESCE(tt.summary,ft.summary) FROM featured_topics ft LEFT JOIN featured_topic_translations tt ON tt.topic_id=ft.id AND tt.language_code=? WHERE ft.brief_id=? ORDER BY ft.position`, language, brief.ID)

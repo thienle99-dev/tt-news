@@ -21,6 +21,7 @@ type Filters = {
 };
 const categories: Record<string, Record<Locale, string>> = {
   technology: { en: "Technology", vi: "Công nghệ" },
+  programming: { en: "Programming", vi: "Lập trình" },
   world: { en: "World", vi: "Thế giới" },
   society: { en: "Society", vi: "Xã hội" },
   culture: { en: "Culture", vi: "Văn hóa" },

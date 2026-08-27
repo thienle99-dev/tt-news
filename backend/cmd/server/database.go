@@ -78,6 +78,7 @@ func migrate(db *sql.DB) error {
 
 	categories := []struct{ slug, name string }{
 		{"technology", "Công nghệ"},
+		{"programming", "Lập trình"},
 		{"world", "Thế giới"},
 		{"business", "Kinh doanh"},
 		{"society", "Xã hội"},
@@ -94,7 +95,14 @@ func migrate(db *sql.DB) error {
 	}
 
 	sources := []rss.Source{
-		{Name: "Hacker News", URL: "https://hnrss.org/frontpage", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Hacker News", URL: "https://news.ycombinator.com/rss", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "DEV Community", URL: "https://dev.to/feed", Category: "programming", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "GitHub Blog", URL: "https://github.blog/feed/", Category: "programming", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "ByteByteGo", URL: "https://blog.bytebytego.com/feed", Category: "programming", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Martin Fowler", URL: "https://martinfowler.com/feed.atom", Category: "programming", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Stack Overflow Blog", URL: "https://stackoverflow.blog/feed/", Category: "programming", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Ars Technica", URL: "https://feeds.arstechnica.com/arstechnica/index", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Krebs on Security", URL: "https://krebsonsecurity.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		// {Name: "Al Jazeera English", URL: "https://www.aljazeera.com/xml/rss/all.xml", Category: "world", CountryCode: "QA", CountryName: "Qatar"},
 		// {Name: "The Guardian World", URL: "https://www.theguardian.com/world/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "The Guardian Politics", URL: "https://www.theguardian.com/politics/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
@@ -179,6 +187,9 @@ func migrate(db *sql.DB) error {
 		// {Name: "China News Service – Photo", URL: "https://www.chinanews.com.cn/rss/photo.xml", Category: "culture", CountryCode: "CN", CountryName: "Trung Quốc"},
 	}
 	sources = append(sources, scmp.Feeds...)
+	if _, err = db.Exec(`UPDATE sources SET feed_url=? WHERE name=? AND feed_url=?`, "https://news.ycombinator.com/rss", "Hacker News", "https://hnrss.org/frontpage"); err != nil {
+		return err
+	}
 	for _, source := range sources {
 		if source.Category == "business" {
 			continue

@@ -20,7 +20,7 @@ export const api = {
   categories: () => request<Category[]>('/api/categories'),
   sources: () => request<Source[]>('/api/sources'),
   countries: () => request<Country[]>('/api/countries'),
-  featured: (language: string) => request<FeaturedBrief>(`/api/featured?lang=${encodeURIComponent(language)}`),
+  featured: (language: string) => request<FeaturedBrief | null>(`/api/featured?lang=${encodeURIComponent(language)}`),
   saved: (language: string) => request<Article[]>(`/api/saved?lang=${encodeURIComponent(language)}`),
   toggleSaved: (article: Article) => request<{ saved: boolean }>(`/api/saved/${article.id}`, { method: article.is_saved ? 'DELETE' : 'POST' }),
   me: () => request<TelegramUser>('/api/me'),
