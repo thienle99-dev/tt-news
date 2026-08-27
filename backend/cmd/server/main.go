@@ -288,9 +288,19 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "c.slug=?")
 		args = append(args, c)
 	}
-	if sourceID := q.Get("source"); sourceID != "" {
-		where = append(where, "s.id=?")
-		args = append(args, sourceID)
+	if sourceIDs := q.Get("source"); sourceIDs != "" {
+		placeholders := []string{}
+		for _, rawID := range strings.Split(sourceIDs, ",") {
+			id, err := strconv.ParseInt(strings.TrimSpace(rawID), 10, 64)
+			if err != nil || id < 1 {
+				continue
+			}
+			placeholders = append(placeholders, "?")
+			args = append(args, id)
+		}
+		if len(placeholders) > 0 {
+			where = append(where, "s.id IN ("+strings.Join(placeholders, ",")+")")
+		}
 	}
 	if country := q.Get("country"); country != "" {
 		where = append(where, "s.country_code=?")

@@ -268,3 +268,34 @@ nav button:focus-visible {
 nav {
   padding-bottom: calc(12px + env(safe-area-inset-bottom));
 }
+
+/* Keep source selection visibly grouped directly below categories. */
+.rail {
+  position: relative;
+  padding-top: 34px;
+}
+
+.rail::before {
+  content: "Nguồn dữ liệu";
+  position: absolute;
+  top: 8px;
+  left: 0;
+  color: var(--muted);
+  font: 700 11px system-ui;
+  letter-spacing: .6px;
+}
+
+.rail .source-pill {
+  min-width: 108px;
+  padding: 7px 8px;
+  border-radius: 11px;
+}
+
+.rail .source-pill b {
+  font-size: 12px;
+}
+
+.rail .source-pill span {
+  margin-top: 2px;
+  font-size: 10px;
+}
