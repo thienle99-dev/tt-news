@@ -780,6 +780,19 @@ small {
 }
 .admin-field select {
   cursor: pointer;
+  min-height: 42px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  border-radius: 10px;
+}
+.filter-controls > .compact-assignment-select {
+  min-height: 36px;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 600 12px Roboto, sans-serif;
 }
 .ai-config-card,
 .operations-card {
