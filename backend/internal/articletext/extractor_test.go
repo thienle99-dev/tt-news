@@ -39,3 +39,20 @@ func TestFetchRejectsOversizedHTML(t *testing.T) {
 		t.Fatal("Fetch() succeeded for an oversized response")
 	}
 }
+
+func TestFetchContentKeepsArticleImages(t *testing.T) {
+	client := &http.Client{Transport: roundTripper(func(*http.Request) (*http.Response, error) {
+		body := `<article><p>Article body.</p><img src="/images/one.jpg"><img data-src="https://cdn.example.test/two.jpg"></article>`
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	content, err := (Client{HTTPClient: client}).FetchContent(context.Background(), "https://example.test/news/item")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content.Text != "Article body." {
+		t.Fatalf("text = %q", content.Text)
+	}
+	if got, want := strings.Join(content.Images, ","), "https://example.test/images/one.jpg,https://cdn.example.test/two.jpg"; got != want {
+		t.Fatalf("images = %q, want %q", got, want)
+	}
+}

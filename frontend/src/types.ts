@@ -1,5 +1,5 @@
 export type Article = {
-  id: number; title: string; description: string; summary: string; url: string; image_url: string
+  id: number; title: string; description: string; summary: string; url: string; image_url: string; content_images: string[]
   source: string; source_id: number; country_code: string; country_name: string; category: string; published_at: string; is_saved: boolean
 }
 export type Category = { slug: string; name: string }

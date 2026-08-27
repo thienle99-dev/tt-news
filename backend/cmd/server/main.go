@@ -296,7 +296,8 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a article
-	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
+	var imageJSON string
+	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=?`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -305,7 +306,16 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "could not load article")
 		return
 	}
+	a.ContentImages = decodeContentImages(imageJSON)
 	jsonOut(w, 200, a)
+}
+
+func decodeContentImages(raw string) []string {
+	var images []string
+	if json.Unmarshal([]byte(raw), &images) != nil {
+		return nil
+	}
+	return images
 }
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 	rows, e := s.db.QueryContext(r.Context(), "SELECT slug,name FROM categories ORDER BY name")
@@ -567,14 +577,19 @@ func (s *server) fetchSource(ctx context.Context, src source) (int, error) {
 		if summary == "" {
 			summary = articletext.PlainText(item.Content)
 		}
-		description := summary
-		body, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).Fetch(ctx, link)
+		description, imagesJSON := summary, "[]"
+		body, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link)
 		if fetchErr != nil {
 			log.Printf("rss article %s: %v", link, fetchErr)
-		} else if body != "" {
-			description = body
+		} else {
+			if body.Text != "" {
+				description = body.Text
+			}
+			if encoded, marshalErr := json.Marshal(body.Images); marshalErr == nil {
+				imagesJSON = string(encoded)
+			}
 		}
-		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,published_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, published.UTC().Format(time.RFC3339))
+		result, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,summary,url,image_url,content_images,published_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(url) DO NOTHING`, src.ID, src.CategoryID, title, description, summary, link, image, imagesJSON, published.UTC().Format(time.RFC3339))
 		if e != nil {
 			return inserted, e
 		}

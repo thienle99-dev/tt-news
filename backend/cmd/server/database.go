@@ -39,13 +39,13 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
 			return err
 		}
-		if _, err = db.Exec(string(schema)); err != nil {
+		if _, err = db.Exec(string(schema)); err != nil && !(name == "migrations/003_article_content_images.sql" && strings.Contains(err.Error(), "duplicate column name")) {
 			return err
 		}
 	}

@@ -19,19 +19,20 @@ type source struct {
 }
 
 type article struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Summary     string `json:"summary"`
-	URL         string `json:"url"`
-	ImageURL    string `json:"image_url"`
-	Source      string `json:"source"`
-	SourceID    int64  `json:"source_id"`
-	CountryCode string `json:"country_code"`
-	CountryName string `json:"country_name"`
-	Category    string `json:"category"`
-	PublishedAt string `json:"published_at"`
-	IsSaved     bool   `json:"is_saved"`
+	ID            int64    `json:"id"`
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	Summary       string   `json:"summary"`
+	URL           string   `json:"url"`
+	ImageURL      string   `json:"image_url"`
+	ContentImages []string `json:"content_images"`
+	Source        string   `json:"source"`
+	SourceID      int64    `json:"source_id"`
+	CountryCode   string   `json:"country_code"`
+	CountryName   string   `json:"country_name"`
+	Category      string   `json:"category"`
+	PublishedAt   string   `json:"published_at"`
+	IsSaved       bool     `json:"is_saved"`
 }
 
 type translation struct {
