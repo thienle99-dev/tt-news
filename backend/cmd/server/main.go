@@ -640,7 +640,9 @@ func (s *server) translate(ctx context.Context, article article) (translation, e
 		} `json:"choices"`
 	}
 	if e = json.NewDecoder(res.Body).Decode(&out); e != nil || len(out.Choices) == 0 {
-		if e == nil { e = errors.New("translation response has no choices") }
+		if e == nil {
+			e = errors.New("translation response has no choices")
+		}
 		return translation{}, e
 	}
 	var result translation

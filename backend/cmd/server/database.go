@@ -38,8 +38,10 @@ func openDB(file string) (*sql.DB, error) {
 }
 
 func migrate(db *sql.DB) error {
+	var err error
 	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql"} {
-		schema, err := embedded.ReadFile(name)
+		var schema []byte
+		schema, err = embedded.ReadFile(name)
 		if err != nil {
 			return err
 		}
