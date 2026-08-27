@@ -612,7 +612,12 @@ func (s *server) translate(ctx context.Context, article article) (translation, e
 	if s.cfg.AIURL == "" || s.cfg.AIKey == "" {
 		return translation{}, errors.New("translation service is not configured")
 	}
-	instruction := "Translate each supplied news field from English to Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize, add facts, or use Markdown. Return only a JSON object with string fields title, description, and summary."
+	instruction := `Translate the supplied news fields from English to Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts.
+
+Your entire response MUST be one valid JSON object and nothing else. The first character must be { and the last character must be }. Do not use Markdown, code fences, prose, labels, or explanations. Use exactly these string keys: "title", "description", "summary". Keep empty input fields as empty strings.
+
+Required output shape:
+{"title":"Vietnamese translation","description":"Vietnamese translation","summary":"Vietnamese translation"}`
 	payload := map[string]any{"model": s.cfg.AIModel, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\n\ndescription: %s\n\nsummary: %s", article.Title, article.Description, article.Summary)}}, "temperature": 0.2, "response_format": map[string]string{"type": "json_object"}}
 	data, e := json.Marshal(payload)
 	if e != nil {
@@ -630,7 +635,15 @@ func (s *server) translate(ctx context.Context, article article) (translation, e
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return translation{}, fmt.Errorf("translation endpoint returned %s", res.Status)
+		body, readErr := io.ReadAll(io.LimitReader(res.Body, 8<<10))
+		if readErr != nil {
+			return translation{}, fmt.Errorf("translation endpoint returned %s (could not read error body: %w)", res.Status, readErr)
+		}
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			return translation{}, fmt.Errorf("translation endpoint returned %s with an empty error body", res.Status)
+		}
+		return translation{}, fmt.Errorf("translation endpoint returned %s: %s", res.Status, message)
 	}
 	var out struct {
 		Choices []struct {
@@ -647,7 +660,11 @@ func (s *server) translate(ctx context.Context, article article) (translation, e
 	}
 	var result translation
 	if e = json.Unmarshal([]byte(out.Choices[0].Message.Content), &result); e != nil {
-		return translation{}, fmt.Errorf("decode translation: %w", e)
+		content := strings.TrimSpace(out.Choices[0].Message.Content)
+		if len(content) > 4096 {
+			content = content[:4096] + "…"
+		}
+		return translation{}, fmt.Errorf("decode translation: %w; model content: %q", e, content)
 	}
 	result.Title = strings.TrimSpace(result.Title)
 	result.Description = strings.TrimSpace(result.Description)
