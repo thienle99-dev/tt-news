@@ -1,0 +1,49 @@
+CREATE TABLE IF NOT EXISTS categories (
+  id INTEGER PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sources (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  feed_url TEXT NOT NULL UNIQUE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS articles (
+  id INTEGER PRIMARY KEY,
+  source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL UNIQUE,
+  image_url TEXT NOT NULL DEFAULT '',
+  published_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_category_published ON articles(category_id, published_at DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY,
+  telegram_id INTEGER NOT NULL UNIQUE,
+  username TEXT NOT NULL DEFAULT '',
+  first_name TEXT NOT NULL DEFAULT '',
+  last_name TEXT NOT NULL DEFAULT '',
+  photo_url TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS saved_articles (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, article_id)
+);
+CREATE INDEX IF NOT EXISTS idx_saved_articles_user ON saved_articles(user_id, created_at DESC);

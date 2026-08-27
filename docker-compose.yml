@@ -1,0 +1,18 @@
+services:
+  news-app:
+    build: .
+    env_file: .env
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - news-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/news", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  news-data:

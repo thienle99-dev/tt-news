@@ -1,0 +1,10 @@
+.env
+data/*.db
+data/*.db-*
+backend/static/*
+!backend/static/.gitkeep
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts

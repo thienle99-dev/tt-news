@@ -1,0 +1,11 @@
+interface TelegramWebApp {
+  initData: string
+  colorScheme: 'light' | 'dark'
+  themeParams: Record<string, string>
+  ready(): void
+  expand(): void
+  openLink(url: string): void
+  onEvent(event: string, callback: () => void): void
+  offEvent(event: string, callback: () => void): void
+}
+interface Window { Telegram?: { WebApp?: TelegramWebApp } }
