@@ -162,12 +162,20 @@ func migrate(db *sql.DB) error {
 	}
 	sources = append(sources, scmp.Feeds...)
 	for _, source := range sources {
+		if source.Category == "business" {
+			continue
+		}
 		if source.CountryCode == "" {
 			source.CountryCode, source.CountryName = "GLOBAL", "Toàn cầu"
 		}
 		if _, err = db.Exec(`INSERT INTO sources(name,feed_url,category_id,country_code,country_name) VALUES(?,?,(SELECT id FROM categories WHERE slug=?),?,?) ON CONFLICT(feed_url) DO UPDATE SET country_code=excluded.country_code,country_name=excluded.country_name`, source.Name, source.URL, source.Category, source.CountryCode, source.CountryName); err != nil {
 			return err
 		}
+	}
+	// Keep existing data recoverable, but stop fetching and serving the removed
+	// category immediately for both fresh and already-running databases.
+	if _, err = db.Exec("UPDATE sources SET enabled=0 WHERE category_id=(SELECT id FROM categories WHERE slug='business')"); err != nil {
+		return err
 	}
 	return nil
 }

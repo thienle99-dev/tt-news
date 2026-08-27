@@ -283,7 +283,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	}
 	// A disabled source must not leak into the feed, even when its articles were
 	// imported before the source was disabled.
-	where := []string{"s.enabled=1"}
+	where := []string{"s.enabled=1", "c.slug<>'business'"}
 	if c := q.Get("category"); c != "" {
 		where = append(where, "c.slug=?")
 		args = append(args, c)
@@ -326,7 +326,7 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var a article
 	var imageJSON string
-	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
+	e := s.db.QueryRowContext(r.Context(), `SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,0 FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND c.slug<>'business'`, id).Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, new(int))
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -347,7 +347,7 @@ func decodeContentImages(raw string) []string {
 	return images
 }
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.QueryContext(r.Context(), "SELECT slug,name FROM categories ORDER BY name")
+	rows, e := s.db.QueryContext(r.Context(), `SELECT c.slug,c.name FROM categories c WHERE c.slug<>'business' AND EXISTS(SELECT 1 FROM sources s WHERE s.category_id=c.id AND s.enabled=1) ORDER BY c.name`)
 	if e != nil {
 		jsonErr(w, 500, "could not load categories")
 		return
@@ -362,7 +362,7 @@ func (s *server) categories(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, out)
 }
 func (s *server) sources(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT id,name,country_code,country_name FROM sources WHERE enabled=1 ORDER BY name`)
+	rows, err := s.db.QueryContext(r.Context(), `SELECT s.id,s.name,s.country_code,s.country_name FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business' ORDER BY s.name`)
 	if err != nil {
 		jsonErr(w, 500, "could not load sources")
 		return
@@ -379,7 +379,7 @@ func (s *server) sources(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, out)
 }
 func (s *server) countries(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT DISTINCT country_code,country_name FROM sources WHERE enabled=1 ORDER BY country_name`)
+	rows, err := s.db.QueryContext(r.Context(), `SELECT DISTINCT s.country_code,s.country_name FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business' ORDER BY s.country_name`)
 	if err != nil {
 		jsonErr(w, 500, "could not load countries")
 		return
@@ -404,7 +404,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = []any{language, u.ID}
 	}
-	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,1 FROM saved_articles sa JOIN articles a ON a.id=sa.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE sa.user_id=? AND s.enabled=1 AND c.slug<>'business' ORDER BY sa.created_at DESC`, title, description, summary, translationJoin)
 	rows, e := s.db.QueryContext(r.Context(), query, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load saved articles")
@@ -545,7 +545,7 @@ func (result *rssFetchResult) add(other rssFetchResult) {
 }
 
 func (s *server) fetchSources(ctx context.Context, nameFilter string, since time.Time) {
-	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1`
+	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business'`
 	args := []any{}
 	if strings.TrimSpace(nameFilter) != "" {
 		query += " AND lower(s.name) LIKE ?"
