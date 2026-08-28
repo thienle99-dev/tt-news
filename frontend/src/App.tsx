@@ -8,6 +8,7 @@ import type {
   AIModel,
   Category,
   Country,
+  DailyDigestPreferences,
   FeaturedBrief,
   GoldRate,
   MediumReaderArticle,
@@ -139,6 +140,15 @@ const text = {
     summaryEmpty: "No summary yet. Use the sparkle button to generate one.",
     autoSummary: "Automatic summaries",
     autoSummaryHint: "Generate an AI summary when opening an article that does not have one yet.",
+    dailyDigest: "Daily Telegram digest",
+    dailyDigestHint: "Get up to 10 new articles from the topics and sources you follow at 08:00 Vietnam time.",
+    digestTopics: "Topics to follow",
+    digestSources: "Sources to follow",
+    digestSearchSources: "Search sources",
+    digestSave: "Save digest settings",
+    digestSaving: "Saving…",
+    digestSaved: "Daily digest settings saved.",
+    digestNeedsSelection: "Select at least one topic or source before enabling the digest.",
     goldPrices: "Gold prices",
     goldLive: "LIVE REFERENCE",
     goldBuy: "Buy",
@@ -243,6 +253,15 @@ const text = {
     summaryEmpty: "Chưa có bản tóm tắt. Nhấn nút ở góc phải để AI tạo tóm tắt.",
     autoSummary: "Tự động tóm tắt",
     autoSummaryHint: "Tạo tóm tắt bằng AI khi mở bài viết chưa có bản tóm tắt.",
+    dailyDigest: "Bản tin Telegram hằng ngày",
+    dailyDigestHint: "Nhận tối đa 10 bài mới từ chủ đề và nguồn bạn theo dõi lúc 08:00 giờ Việt Nam.",
+    digestTopics: "Chủ đề theo dõi",
+    digestSources: "Nguồn tin theo dõi",
+    digestSearchSources: "Tìm nguồn tin",
+    digestSave: "Lưu cài đặt bản tin",
+    digestSaving: "Đang lưu…",
+    digestSaved: "Đã lưu cài đặt bản tin hằng ngày.",
+    digestNeedsSelection: "Chọn ít nhất một chủ đề hoặc nguồn trước khi bật bản tin.",
     goldPrices: "Giá vàng",
     goldLive: "THAM KHẢO TRỰC TIẾP",
     goldBuy: "Mua",
@@ -1635,6 +1654,7 @@ function Settings({
           <span aria-hidden="true" />
         </label>
       </div>
+      <DailyDigestSettings locale={locale} />
       <div className="settings-card reader-settings-card">
         <small>TOOLS</small>
         <h2>{t.mediumReader}</h2>
@@ -1643,6 +1663,51 @@ function Settings({
       </div>
     </section>
   );
+}
+function DailyDigestSettings({ locale }: { locale: Locale }) {
+  const t = text[locale];
+  const [preferences, setPreferences] = useState<DailyDigestPreferences>({ enabled: false, category_ids: [], source_ids: [] });
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [sourceSearch, setSourceSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    Promise.all([api.dailyDigestPreferences(), api.categories(), api.sources()])
+      .then(([next, categoryList, sourceList]) => { if (active) { setPreferences(next); setCategories(categoryList); setSources(sourceList); } })
+      .catch(() => { if (active) setError(t.loadError); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [t.loadError]);
+  const toggleID = (key: "category_ids" | "source_ids", id: number) => setPreferences(current => ({ ...current, [key]: current[key].includes(id) ? current[key].filter(value => value !== id) : [...current[key], id] }));
+  const selectedSources = preferences.source_ids.map(id => sources.find(source => source.id === id)).filter((source): source is Source => Boolean(source));
+  const visibleSources = sources.filter(source => source.name.toLocaleLowerCase().includes(sourceSearch.trim().toLocaleLowerCase())).slice(0, 30);
+  const save = async () => {
+    if (preferences.enabled && preferences.category_ids.length === 0 && preferences.source_ids.length === 0) { setError(t.digestNeedsSelection); return; }
+    setSaving(true); setError(""); setMessage("");
+    try { setPreferences(await api.updateDailyDigestPreferences(preferences)); setMessage(t.digestSaved); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : t.loadError); }
+    finally { setSaving(false); }
+  };
+  return <section className="settings-card digest-settings-card" aria-labelledby="daily-digest-title" aria-busy={loading || saving}>
+    <div className="digest-heading">
+      <div><small>TELEGRAM</small><h2 id="daily-digest-title">{t.dailyDigest}</h2><p>{t.dailyDigestHint}</p></div>
+      <label className="settings-switch"><span className="sr-only">{t.dailyDigest}</span><input type="checkbox" checked={preferences.enabled} disabled={loading} onChange={event => setPreferences(current => ({ ...current, enabled: event.target.checked }))} /><span aria-hidden="true" /></label>
+    </div>
+    {!loading && <>
+      <div className="digest-choice"><span>{t.digestTopics}</span><div className="digest-category-chips">{categories.map(categoryItem => <button type="button" key={categoryItem.slug} aria-pressed={preferences.category_ids.includes(categoryItem.id)} onClick={() => toggleID("category_ids", categoryItem.id)}>{category(categoryItem.slug, locale)}</button>)}</div></div>
+      <div className="digest-choice"><label htmlFor="digest-source-search">{t.digestSources}</label><input id="digest-source-search" type="search" value={sourceSearch} onChange={event => setSourceSearch(event.target.value)} placeholder={t.digestSearchSources} autoComplete="off" />
+        {selectedSources.length > 0 && <div className="digest-source-tags">{selectedSources.map(source => <span key={source.id}>{source.name}<button type="button" onClick={() => toggleID("source_ids", source.id)} aria-label={`${locale === "vi" ? "Bỏ chọn" : "Remove"} ${source.name}`}><Icon name="close" /></button></span>)}</div>}
+        <div className="digest-source-options">{visibleSources.map(source => <label key={source.id}><input type="checkbox" checked={preferences.source_ids.includes(source.id)} onChange={() => toggleID("source_ids", source.id)} />{source.name}</label>)}</div>
+      </div>
+      {error && <p className="digest-message error" role="alert">{error}</p>}{message && <p className="digest-message success" role="status">{message}</p>}
+      <button type="button" className="primary digest-save" disabled={saving} onClick={() => void save()}>{saving ? t.digestSaving : t.digestSave}</button>
+    </>}
+    {loading && <p className="admin-jobs-empty" role="status">{t.loading}</p>}
+  </section>;
 }
 function MediumReader({ locale, back }: { locale: Locale; back: () => void }) {
   const t = text[locale];
@@ -2234,6 +2299,14 @@ function AdminPage() {
               <section className="settings-card usage-card" aria-labelledby="usage-title">
                 <small>AI USAGE</small><h2 id="usage-title">Token theo ngày</h2><p className="usage-period">7 ngày gần nhất</p>
                 {status.ai_usage.length ? (() => { const max = Math.max(1, ...status.ai_usage.map(item => item.total_tokens)); return <div className="usage-chart" role="img" aria-label="Biểu đồ token AI trong 7 ngày gần nhất">{status.ai_usage.map(item => <div className="usage-bar" key={item.day} aria-label={`${item.day}: ${item.total_tokens.toLocaleString()} token`}><span style={{ height: `${item.total_tokens === 0 ? 0 : Math.max(8, item.total_tokens / max * 100)}%` }} /><strong>{item.total_tokens.toLocaleString()}</strong><small>{item.day.slice(5)}</small></div>)}</div>; })() : <p className="admin-jobs-empty">Chưa có dữ liệu token. Dữ liệu được ghi nhận từ yêu cầu AI tiếp theo.</p>}
+              </section>
+              <section className="settings-card digest-admin-card" aria-labelledby="digest-admin-title">
+                <small>TELEGRAM DIGEST</small><h2 id="digest-admin-title">Bản tin hằng ngày</h2><p>Gửi lúc 08:00 (giờ Việt Nam), chỉ tới người dùng đã bật và theo dõi ít nhất một chủ đề hoặc nguồn tin.</p>
+                <dl className="digest-admin-metrics">
+                  <div><dt>Đăng ký</dt><dd>{status.daily_digest.subscribers}</dd></div>
+                  <div><dt>Đã gửi hôm nay</dt><dd>{status.daily_digest.sent_today}</dd></div>
+                  <div><dt>Gửi lỗi hôm nay</dt><dd>{status.daily_digest.failed_today}</dd></div>
+                </dl>
               </section>
               <AdminSources sources={status.sources} token={token} action={action} />
             </div>

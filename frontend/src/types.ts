@@ -3,7 +3,7 @@ export type Article = {
   id: number; title: string; description: string; original_content?: string; summary: string; url: string; image_url: string; content_images: string[]
   source: string; source_id: number; country_code: string; country_name: string; category: string; categories: ArticleCategory[]; published_at: string; is_saved: boolean; is_read: boolean; folder_ids: number[]; tag_ids: number[]
 }
-export type Category = { slug: string; name: string }
+export type Category = { id: number; slug: string; name: string }
 export type Source = { id: number; name: string; country_code: string; country_name: string }
 export type Country = { code: string; name: string }
 export type Translation = Pick<Article, 'title' | 'description' | 'summary'>
@@ -16,6 +16,7 @@ export type SavedOrganization = { folders: SavedCollection[]; tags: SavedCollect
 export type AIModel = { id: string; owned_by?: string }
 export type AIConfig = { base_url: string; model: string; api_key_configured: boolean; source: 'env' | 'saved' }
 export type AIConfigInput = { base_url: string; api_key: string; model: string }
+export type DailyDigestPreferences = { enabled: boolean; category_ids: number[]; source_ids: number[] }
 export type MediumReaderArticle = {
   requested_url: string; canonical_url: string; resolved_url: string; title: string; subtitle?: string; author?: string
   published_at?: string; reading_time_minutes?: number; access: 'public' | 'author_free_link' | 'preview'; warning?: string

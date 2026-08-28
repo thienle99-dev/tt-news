@@ -1177,6 +1177,33 @@ small {
 .usage-bar { display: grid; flex: 1; min-width: 0; height: 100%; grid-template-rows: 1fr auto auto; align-items: end; gap: 5px; }
 .usage-bar span { display: block; width: 100%; min-height: 4px; border-radius: 6px 6px 0 0; background: var(--accent); }
 .usage-bar strong, .usage-bar small { overflow: hidden; color: var(--muted); font: 700 10px/1 Roboto, sans-serif; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.digest-settings-card { display: grid; gap: 18px; }
+.digest-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.digest-settings-card h2, .digest-admin-card h2 { margin: 7px 0 0; font: 600 1.5rem/1.1 Newsreader, Georgia, serif; }
+.digest-heading p, .digest-admin-card > p { margin: 7px 0 0; color: var(--muted); font: 13px/1.45 Roboto, sans-serif; }
+.digest-choice { display: grid; gap: 9px; }
+.digest-choice > span, .digest-choice > label { color: var(--ink); font: 700 12px/1.2 Roboto, sans-serif; }
+.digest-choice input[type="search"] { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: 14px/1.3 Roboto, sans-serif; }
+.digest-category-chips, .digest-source-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.digest-category-chips button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--muted); font: 700 12px/1 Roboto, sans-serif; }
+.digest-category-chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.digest-source-tags span { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 5px 4px 10px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 700 12px/1.2 Roboto, sans-serif; }
+.digest-source-tags button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; padding: 5px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: inherit; }
+.digest-source-tags button:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.digest-source-tags .icon { width: 15px; height: 15px; }
+.digest-source-options { display: grid; max-height: 216px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.digest-source-options label { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 8px 11px; border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent); color: var(--ink); font: 13px/1.3 Roboto, sans-serif; }
+.digest-source-options label:last-child { border-bottom: 0; }
+.digest-source-options input { width: 16px; height: 16px; accent-color: var(--accent); }
+.digest-message { margin: -6px 0 0; font: 600 12px/1.4 Roboto, sans-serif; }
+.digest-message.error { color: var(--negative); }.digest-message.success { color: var(--positive); }
+.digest-save { justify-self: start; min-width: 118px; }
+.digest-admin-card { display: grid; gap: 0; }
+.digest-admin-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 18px 0 0; border-top: 1px solid var(--line); }
+.digest-admin-metrics > div { display: grid; gap: 4px; min-width: 0; padding: 14px 12px 0 0; }
+.digest-admin-metrics > div + div { padding-left: 12px; border-left: 1px solid var(--line); }
+.digest-admin-metrics dt { color: var(--muted); font: 700 10px/1.2 Roboto, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.digest-admin-metrics dd { margin: 0; color: var(--ink); font: 700 1.35rem/1 Roboto, sans-serif; font-variant-numeric: tabular-nums; }
 .featured-count-field { display: grid; gap: 4px; min-width: 72px; color: var(--muted); font: 700 10px/1.2 Roboto, sans-serif; letter-spacing: .07em; text-transform: uppercase; }
 .featured-count-field input { width: 72px; min-height: 40px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: 700 16px/1 Roboto, sans-serif; letter-spacing: normal; }
 .featured-generator-card { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 58%, var(--paper)), var(--paper) 62%); }
@@ -1725,6 +1752,7 @@ nav .nav-active .nav-label {
   .operations-metrics > div:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
   .operations-footer { grid-template-columns: 1fr; align-items: stretch; }
   .operations-footer .secondary-button { width: 100%; }
+  .digest-admin-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-job-list li { grid-template-columns: auto minmax(0, 1fr); }
   .admin-job-list time { grid-column: 2; text-align: left; }
 }
@@ -1735,6 +1763,11 @@ nav .nav-active .nav-label {
   .masthead {
     align-items: flex-start;
   }
+  .digest-heading { gap: 10px; }
+  .digest-category-chips { gap: 6px; }
+  .digest-category-chips button { min-height: 34px; padding-inline: 9px; }
+  .digest-admin-metrics { grid-template-columns: 1fr; gap: 10px; }
+  .digest-admin-metrics > div, .digest-admin-metrics > div + div { padding: 0; border-left: 0; }
   .header-actions {
     flex-direction: column;
     align-items: flex-end;

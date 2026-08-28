@@ -89,6 +89,7 @@ func main() {
 	}
 	if cfg.BotToken != "" && cfg.MiniAppURL != "" {
 		go app.runBot(ctx)
+		go app.runDailyDigestWorker(ctx)
 	} else {
 		log.Print("Telegram bot disabled: set TELEGRAM_BOT_TOKEN and MINI_APP_URL to enable it")
 	}
@@ -224,6 +225,8 @@ func (s *server) routes() http.Handler {
 			r.Get("/reading-history", s.readingHistory)
 			r.Delete("/reading-history", s.clearReadingHistory)
 			r.Get("/me", s.me)
+			r.Get("/daily-digest", s.dailyDigestPreferences)
+			r.Put("/daily-digest", s.updateDailyDigestPreferences)
 		})
 	})
 	r.Route("/api/admin", func(r chi.Router) {
@@ -479,17 +482,18 @@ func decodeContentImages(raw string) []string {
 	return images
 }
 func (s *server) categories(w http.ResponseWriter, r *http.Request) {
-	rows, e := s.db.QueryContext(r.Context(), `SELECT c.slug,c.name FROM categories c WHERE EXISTS(SELECT 1 FROM sources s WHERE s.category_id=c.id AND s.enabled=1) OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.category_id=c.id) ORDER BY c.name`)
+	rows, e := s.db.QueryContext(r.Context(), `SELECT c.id,c.slug,c.name FROM categories c WHERE EXISTS(SELECT 1 FROM sources s WHERE s.category_id=c.id AND s.enabled=1) OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.category_id=c.id) ORDER BY c.name`)
 	if e != nil {
 		jsonErr(w, 500, "could not load categories")
 		return
 	}
 	defer rows.Close()
-	out := []map[string]string{}
+	out := []map[string]any{}
 	for rows.Next() {
+		var id int64
 		var slug, name string
-		_ = rows.Scan(&slug, &name)
-		out = append(out, map[string]string{"slug": slug, "name": name})
+		_ = rows.Scan(&id, &slug, &name)
+		out = append(out, map[string]any{"id": id, "slug": slug, "name": name})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1437,13 +1441,32 @@ func (s *server) runBot(ctx context.Context) {
 }
 func (s *server) sendWebApp(ctx context.Context, c *http.Client, chatID int64) {
 	payload := map[string]any{"chat_id": chatID, "text": "Open your personal news feed:", "reply_markup": map[string]any{"inline_keyboard": [][]any{{map[string]any{"text": "Open News", "web_app": map[string]string{"url": s.cfg.MiniAppURL}}}}}}
+	if err := s.sendTelegramMessage(ctx, c, payload); err != nil {
+		log.Printf("bot send: %v", err)
+	}
+}
+
+func (s *server) sendTelegramMessage(ctx context.Context, c *http.Client, payload map[string]any) error {
 	b, _ := json.Marshal(payload)
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+s.cfg.BotToken+"/sendMessage", strings.NewReader(string(b)))
 	if e != nil {
-		return
+		return e
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if _, e = c.Do(req); e != nil {
-		log.Printf("bot send: %v", e)
+	res, e := c.Do(req)
+	if e != nil {
+		return e
 	}
+	defer res.Body.Close()
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("Telegram sendMessage returned %s", res.Status)
+	}
+	var response struct{ OK bool `json:"ok"` }
+	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); e != nil {
+		return e
+	}
+	if !response.OK {
+		return errors.New("Telegram sendMessage was rejected")
+	}
+	return nil
 }

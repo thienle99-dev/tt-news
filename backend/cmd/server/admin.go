@@ -88,11 +88,19 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		"translations_generated": "SELECT count(*) FROM article_translations",
 		"featured_briefs":        "SELECT count(*) FROM featured_briefs",
 		"ai_feedback":            "SELECT count(*) FROM article_ai_feedback",
+		"daily_digest_subscribers": "SELECT count(*) FROM user_daily_digests WHERE enabled=1",
 	} {
 		var count int64
 		_ = s.db.QueryRowContext(r.Context(), query).Scan(&count)
 		counts[key] = count
 	}
+	digestDay := time.Now().UTC().Format("2006-01-02")
+	if vietnam, locationErr := time.LoadLocation("Asia/Ho_Chi_Minh"); locationErr == nil {
+		digestDay = time.Now().In(vietnam).Format("2006-01-02")
+	}
+	digestSent, digestFailed := int64(0), int64(0)
+	_ = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM daily_digest_deliveries WHERE day=? AND status='sent'`, digestDay).Scan(&digestSent)
+	_ = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM daily_digest_deliveries WHERE day=? AND status='failed'`, digestDay).Scan(&digestFailed)
 	type jobStatus struct {
 		ID             int64  `json:"id"`
 		Kind           string `json:"kind"`
@@ -170,6 +178,7 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		"jobs_page_size":    jobsPageSize,
 		"jobs_total":        jobsTotal,
 		"ai_usage":          usage,
+		"daily_digest":      map[string]any{"subscribers": counts["daily_digest_subscribers"], "sent_today": digestSent, "failed_today": digestFailed},
 		"ai":                map[string]any{"model": aiSettings.Model, "configured": s.aiConfigured(), "config_source": aiSource, "translations_generated": counts["translations_generated"], "featured_briefs": counts["featured_briefs"], "feedback": counts["ai_feedback"], "cost_tracking": "provider token/cost usage is not exposed by the configured Chat Completions client"},
 	})
 }

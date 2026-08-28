@@ -39,7 +39,7 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
