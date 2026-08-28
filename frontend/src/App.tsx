@@ -717,8 +717,7 @@ const FeaturedMasthead = memo(function FeaturedMasthead({ locale, setLocale }: {
   const t = text[locale];
   return <header className="masthead"><div><p>{t.masthead}</p><h1>{t.featuredNews}</h1></div><LanguagePicker locale={locale} setLocale={setLocale} /></header>;
 });
-const goldPrice = (value: number) =>
-  new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(value);
+const goldPrice = (value: number) => new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(value);
 const goldTime = (value: string) => value.replace(/\.\d+$/, "");
 function GoldRates({ locale }: { locale: Locale }) {
   const [rates, setRates] = useState<GoldRate[]>([]);
@@ -751,6 +750,7 @@ function GoldRates({ locale }: { locale: Locale }) {
     };
   }, [reload]);
   const updated = rates[0]?.last_updated;
+  const highestSell = Math.max(...rates.map(rate => rate.sell_price), 1);
   return (
     <section className="gold-rates" aria-labelledby="gold-rates-title">
       <div className="gold-rates-heading">
@@ -808,12 +808,18 @@ function GoldRates({ locale }: { locale: Locale }) {
                       : locale === "vi"
                         ? "Giảm"
                         : "Down"}{" "}
-                    {rate.trend_value.replace(/^-/, "")} ₫
+                    {goldPrice(Number(rate.trend_value.replace(/[^\d.-]/g, "")))}
                   </p>
                 )}
               </article>
             ))}
           </div>
+          <section className="gold-chart" aria-labelledby="gold-chart-title">
+            <div className="gold-chart-heading"><strong id="gold-chart-title">So sánh giá bán</strong><span>VND/lượng</span></div>
+            <div className="gold-chart-bars" role="img" aria-label={locale === "vi" ? "Biểu đồ so sánh giá bán vàng theo loại" : "Gold sell-price comparison chart"}>
+              {rates.map(rate => <div className="gold-chart-bar" key={rate.code}><div className="gold-chart-plot"><span style={{ height: `${Math.max(8, rate.sell_price / highestSell * 100)}%` }} /></div><strong>{goldPrice(rate.sell_price)}</strong><small>{rate.code}</small></div>)}
+            </div>
+          </section>
           <p className="gold-rates-meta">
             {updated && <span>{t.goldUpdated}: {goldTime(updated)}</span>}
             <span>{t.goldDisclaimer}</span>
@@ -1707,6 +1713,19 @@ function formatAdminTime(value: string) {
     minute: "2-digit",
   }).format(date);
 }
+function formatJobDuration(startedAt: string, finishedAt = "") {
+  const started = new Date(startedAt).getTime();
+  if (Number.isNaN(started)) return "";
+  const seconds = Math.floor(Math.max(0, new Date(finishedAt || Date.now()).getTime() - started) / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  const parts = [];
+  if (hours) parts.push(`${hours} giờ`);
+  if (minutes || hours) parts.push(`${minutes} phút`);
+  parts.push(`${remainingSeconds} giây`);
+  return parts.join(" ");
+}
 
 function AdminSources({
   sources,
@@ -1899,7 +1918,7 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [testReply, setTestReply] = useState("");
   const [testError, setTestError] = useState("");
-  const [featuredArticleCount, setFeaturedArticleCount] = useState(20);
+  const [featuredArticleCount, setFeaturedArticleCount] = useState(8);
   const [jobsPage, setJobsPage] = useState(1);
   const [jobsTab, setJobsTab] = useState<"running" | "completed" | "failed">("running");
   const load = async (page = jobsPage) => {
@@ -1935,6 +1954,17 @@ function AdminPage() {
       setMessage("Đã gửi yêu cầu hủy tác vụ.");
       await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể hủy tác vụ."); }
+    finally { setBusy(""); }
+  };
+  const clearJobHistory = async () => {
+    if (jobsTab === "running") return;
+    setBusy("clear-jobs"); setError("");
+    try {
+      const result = await api.adminClearJobHistory(token, jobsTab);
+      setMessage(`Đã xóa ${result.cleared} tác vụ trong tab hiện tại.`);
+      setJobsPage(1);
+      await load(1);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể xóa lịch sử tác vụ."); }
     finally { setBusy(""); }
   };
   const loadModels = async () => {
@@ -1983,7 +2013,7 @@ function AdminPage() {
     finally { setBusy(""); }
   };
   const generateDailyBrief = async () => {
-    const articleCount = Math.min(24, Math.max(3, featuredArticleCount || 20));
+    const articleCount = Math.min(12, Math.max(3, featuredArticleCount || 8));
     setFeaturedArticleCount(articleCount);
     setBusy("featured"); setError(""); setMessage("");
     try {
@@ -2091,7 +2121,7 @@ function AdminPage() {
                 <div className="featured-generator-controls">
                   <label className="featured-count-field">
                     <span>Số tin</span>
-                    <input type="number" min="3" max="24" value={featuredArticleCount} onChange={event => setFeaturedArticleCount(Number(event.target.value))} disabled={busy !== "" || !status.ai.configured} />
+                    <input type="number" min="3" max="12" value={featuredArticleCount} onChange={event => setFeaturedArticleCount(Number(event.target.value))} disabled={busy !== "" || !status.ai.configured} />
                   </label>
                   <button
                     type="button"
@@ -2131,7 +2161,7 @@ function AdminPage() {
                       <small>JOBS</small>
                       <h3 id="admin-jobs-title">Tiến trình tác vụ</h3>
                     </div>
-                    <span className="jobs-running-count">{status.jobs.filter(job => job.status === "running" || job.status === "queued").length} đang chạy</span>
+                    <div className="jobs-header-actions"><span className="jobs-running-count">{status.jobs.filter(job => job.status === "running" || job.status === "queued").length} đang chạy</span>{jobsTab !== "running" && <button type="button" className="text-button" disabled={busy === "clear-jobs" || !status.jobs.some(job => job.status === jobsTab)} onClick={() => void clearJobHistory()}>{busy === "clear-jobs" ? "Đang xóa…" : "Xóa tab này"}</button>}</div>
                   </div>
                   <div className="jobs-tabs" role="tablist" aria-label="Lọc tác vụ">
                     {(["running", "completed", "failed"] as const).map(tab => <button type="button" role="tab" aria-selected={jobsTab === tab} className={jobsTab === tab ? "active" : ""} onClick={() => setJobsTab(tab)} key={tab}>{tab === "running" ? "Đang chạy" : tab === "completed" ? "Thành công" : "Thất bại"}</button>)}
@@ -2147,8 +2177,7 @@ function AdminPage() {
                             {job.target_count > 0 && <><div className="job-progress" aria-label={`Tiến độ ${job.completed_count}/${job.target_count}`}><span style={{ width: `${Math.min(100, job.completed_count / job.target_count * 100)}%` }} /></div><div className="job-meta"><span>{job.completed_count}/{job.target_count} hoàn tất</span>{job.failed_count > 0 && <span>{job.failed_count} lỗi</span>}<span>{job.trigger === "scheduled" ? "Tự động" : "Thủ công"}</span></div></>}
                             {job.detail && job.status === "running" && <small className="job-detail">{job.detail}</small>}
                           </div>
-                          {job.status === "running" && <button type="button" className="secondary-button job-cancel" disabled={busy === `cancel-${job.id}`} onClick={() => void cancelJob(job.id)}>{busy === `cancel-${job.id}` ? "Đang hủy…" : "Hủy"}</button>}
-                          {job.started_at && <time dateTime={job.started_at}>Bắt đầu {formatAdminTime(job.started_at)}{job.finished_at && <> · Xong {formatAdminTime(job.finished_at)}</>}</time>}
+                          <div className="job-side">{job.status === "running" && <button type="button" className="secondary-button job-cancel" disabled={busy === `cancel-${job.id}`} onClick={() => void cancelJob(job.id)}>{busy === `cancel-${job.id}` ? "Đang hủy…" : "Hủy"}</button>}{job.started_at && <time dateTime={job.started_at}>Bắt đầu {formatAdminTime(job.started_at)}<br />{job.finished_at ? `Mất ${formatJobDuration(job.started_at, job.finished_at)}` : `Đã chạy ${formatJobDuration(job.started_at)}`}</time>}</div>
                         </li>
                       ))}
                     </ul>

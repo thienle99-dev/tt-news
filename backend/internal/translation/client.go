@@ -1,6 +1,7 @@
 package translation
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -194,7 +195,7 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	if c.URL == "" || c.APIKey == "" {
 		return FeaturedBrief{}, errors.New("translation service is not configured")
 	}
-	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("data:\n%s", mustJSON(input))}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("data:\n%s", mustJSON(input))}}, "temperature": 0.2, "stream": true, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return FeaturedBrief{}, err
@@ -223,11 +224,7 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return FeaturedBrief{}, fmt.Errorf("featured endpoint returned %s", res.Status)
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if err != nil {
-		return FeaturedBrief{}, err
-	}
-	content, err := completionContent(body)
+	content, err := streamedCompletionContent(res.Body)
 	if err != nil {
 		return FeaturedBrief{}, err
 	}
@@ -245,6 +242,55 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 		brief.Topics[index].WhyItMatters = strings.TrimSpace(brief.Topics[index].WhyItMatters)
 	}
 	return brief, nil
+}
+
+func streamedCompletionContent(body io.Reader) (string, error) {
+	scanner := bufio.NewScanner(io.LimitReader(body, 1<<20))
+	buffer := make([]byte, 0, 64<<10)
+	scanner.Buffer(buffer, 1<<20)
+	var content strings.Builder
+	var raw strings.Builder
+	sawStream := false
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			raw.WriteString(line)
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		sawStream = true
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			return "", fmt.Errorf("decode featured stream: %w", err)
+		}
+		for _, choice := range chunk.Choices {
+			content.WriteString(choice.Delta.Content)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	// A few OpenAI-compatible gateways accept stream=true but still send one
+	// regular completion object. Accept that response rather than failing a
+	// briefing solely because the provider does not implement SSE streaming.
+	if !sawStream {
+		return completionContent([]byte(raw.String()))
+	}
+	if content.Len() == 0 {
+		return "", errors.New("featured stream returned no content")
+	}
+	return content.String(), nil
 }
 
 func mustJSON(value any) string { data, _ := json.Marshal(value); return string(data) }

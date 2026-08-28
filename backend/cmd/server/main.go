@@ -233,6 +233,7 @@ func (s *server) routes() http.Handler {
 		r.Post("/translations/enqueue", s.adminEnqueueTranslations)
 		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
 		r.Delete("/jobs/{id}", s.adminCancelJob)
+		r.Delete("/jobs", s.adminClearJobHistory)
 		r.Patch("/sources/{id}", s.adminUpdateSource)
 		r.Get("/ai/config", s.adminAIConfig)
 		r.Put("/ai/config", s.adminSaveAIConfig)

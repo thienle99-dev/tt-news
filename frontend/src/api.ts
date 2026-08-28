@@ -46,6 +46,7 @@ export const api = {
   adminEnqueueTranslations: (token: string, sourceIDs: number[]) => request<{ status: string; queued: number; source_count: number }>('/api/admin/translations/enqueue', adminOptions(token, 'POST', { source_ids: sourceIDs })),
   adminRegenerateFeatured: (token: string, articleCount: number) => request<{ status: string; article_count: number }>('/api/admin/featured/regenerate', adminOptions(token, 'POST', { article_count: articleCount })),
   adminCancelJob: (token: string, id: number) => request<{ status: string }>(`/api/admin/jobs/${id}`, adminOptions(token, 'DELETE')),
+  adminClearJobHistory: (token: string, status: 'completed' | 'failed') => request<{ cleared: number }>(`/api/admin/jobs?status=${status}`, adminOptions(token, 'DELETE')),
   adminUpdateSource: (token: string, id: number, enabled: boolean) => request<{ enabled: boolean }>(`/api/admin/sources/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }), headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' } }),
   adminAIConfig: (token: string) => request<AIConfig>('/api/admin/ai/config', adminOptions(token)),
   adminAIModels: (token: string, input: AIConfigInput) => request<AIModel[]>('/api/admin/ai/models', adminOptions(token, 'POST', input)),

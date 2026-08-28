@@ -78,13 +78,10 @@ func TestValidateFeaturedBriefRequiresDailyArticleTarget(t *testing.T) {
 	for index := range candidates {
 		candidates[index] = translationservice.FeaturedCandidate{ID: int64(index + 1)}
 	}
-	topics := make([]translationservice.FeaturedTopic, 7)
+	topics := make([]translationservice.FeaturedTopic, max(3, (defaultFeaturedArticleTarget+2)/3))
 	articleID := int64(1)
 	for index := range topics {
-		count := 3
-		if index == len(topics)-1 {
-			count = 2
-		}
+		count := min(3, defaultFeaturedArticleTarget-int(articleID)+1)
 		for range count {
 			topics[index].ArticleIDs = append(topics[index].ArticleIDs, articleID)
 			articleID++
@@ -95,11 +92,11 @@ func TestValidateFeaturedBriefRequiresDailyArticleTarget(t *testing.T) {
 	}
 	brief := translationservice.FeaturedBrief{Title: "Daily briefing", Intro: "Intro", Takeaways: []string{"One", "Two", "Three"}, Topics: topics}
 	if err := validateFeaturedBrief(brief, candidates, defaultFeaturedArticleTarget); err != nil {
-		t.Fatalf("20-article brief rejected: %v", err)
+		t.Fatalf("daily brief rejected: %v", err)
 	}
 	brief.Topics[len(brief.Topics)-1].ArticleIDs = brief.Topics[len(brief.Topics)-1].ArticleIDs[:1]
 	if err := validateFeaturedBrief(brief, candidates, defaultFeaturedArticleTarget); err == nil {
-		t.Fatal("brief with fewer than 20 selected articles accepted")
+		t.Fatal("brief with fewer than the target articles accepted")
 	}
 }
 

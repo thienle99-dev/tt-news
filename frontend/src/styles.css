@@ -499,6 +499,15 @@ small {
 }
 .gold-rate-trend.up { color: var(--positive); }
 .gold-rate-trend.down { color: var(--negative); }
+.gold-chart { padding: 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 55%, var(--paper)); }
+.gold-chart-heading { display: flex; justify-content: space-between; gap: 12px; color: var(--ink); font: 700 12px/1.3 Roboto, sans-serif; }
+.gold-chart-heading span { color: var(--muted); font-weight: 500; }
+.gold-chart-bars { display: flex; align-items: end; gap: 10px; height: 138px; margin-top: 12px; }
+.gold-chart-bar { display: grid; flex: 1; min-width: 0; height: 100%; grid-template-rows: minmax(0, 1fr) auto auto; align-items: end; gap: 5px; }
+.gold-chart-plot { display: flex; align-items: end; width: 100%; height: 100%; }
+.gold-chart-bar span { display: block; width: 100%; min-height: 5px; border-radius: 6px 6px 0 0; background: var(--accent); transition: height 180ms ease-out; }
+.gold-chart-bar strong, .gold-chart-bar small { overflow: hidden; color: var(--muted); font: 700 10px/1 Roboto, sans-serif; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.gold-chart-bar small { font-weight: 500; }
 .gold-rates-meta {
   display: flex;
   justify-content: space-between;
@@ -1083,11 +1092,12 @@ small {
 .admin-jobs-heading h3 { margin: 5px 0 0; font: 600 1.25rem/1.1 Newsreader, Georgia, serif; }
 .jobs-refreshing { color: var(--positive); font: 700 11px/1.2 Roboto, sans-serif; }
 .jobs-running-count { color: var(--accent); font: 700 12px/1.2 Roboto, sans-serif; }
+.jobs-header-actions { display: flex; align-items: center; gap: 12px; }
 .jobs-tabs { display: flex; gap: 8px; margin-top: 14px; border-bottom: 1px solid var(--line); }
 .jobs-tabs button { min-height: 36px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: 700 12px Roboto, sans-serif; }
 .jobs-tabs button.active { border-color: var(--accent); color: var(--accent); }
 .admin-job-list { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
-.admin-job-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 10px; padding: 11px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent); }
+.admin-job-list li { display: grid; grid-template-columns: 76px minmax(0, 1fr) 142px; align-items: start; gap: 12px; padding: 11px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 74%, transparent); }
 .admin-job-list li:last-child { padding-bottom: 0; border-bottom: 0; }
 .job-status { min-width: 72px; padding: 5px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: 700 10px/1 Roboto, sans-serif; text-align: center; }
 .job-status-running { background: color-mix(in srgb, var(--accent) 14%, var(--paper)); color: var(--accent); }
@@ -1101,6 +1111,7 @@ small {
 .job-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
 .job-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; color: var(--muted); font: 700 10px/1.2 Roboto, sans-serif; }
 .job-detail { display: block; margin-top: 6px; color: var(--ink); font: 11px/1.35 Roboto, sans-serif; overflow-wrap: anywhere; }
+.job-side { display: grid; justify-items: end; gap: 8px; min-width: 0; }
 .admin-job-list time { color: var(--muted); font: 11px/1.35 Roboto, sans-serif; text-align: right; }
 .job-cancel { min-height: 32px; padding: 6px 10px; }
 .jobs-pagination { display: flex; align-items: center; justify-content: end; gap: 10px; margin-top: 14px; color: var(--muted); font: 12px/1.2 Roboto, sans-serif; }

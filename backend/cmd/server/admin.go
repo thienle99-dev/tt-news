@@ -187,6 +187,27 @@ func (s *server) adminCancelJob(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, http.StatusOK, map[string]string{"status": "job cancellation requested"})
 }
 
+func (s *server) adminClearJobHistory(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	if status != "completed" && status != "failed" {
+		jsonErr(w, http.StatusBadRequest, "status must be completed or failed")
+		return
+	}
+	var result sql.Result
+	var err error
+	if status == "failed" {
+		result, err = s.db.ExecContext(r.Context(), `DELETE FROM job_runs WHERE status IN ('failed','skipped')`)
+	} else {
+		result, err = s.db.ExecContext(r.Context(), `DELETE FROM job_runs WHERE status=?`, status)
+	}
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not clear job history")
+		return
+	}
+	cleared, _ := result.RowsAffected()
+	jsonOut(w, http.StatusOK, map[string]int64{"cleared": cleared})
+}
+
 func adminSourceIDs(r *http.Request) ([]int64, error) {
 	var body struct {
 		SourceIDs []int64 `json:"source_ids"`

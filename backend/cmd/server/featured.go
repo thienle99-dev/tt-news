@@ -17,7 +17,7 @@ import (
 // without making the AI request unnecessarily large.
 const featuredCandidateLimit = 24
 const featuredPerSourceLimit = 4
-const defaultFeaturedArticleTarget = 20
+const defaultFeaturedArticleTarget = 8
 const minFeaturedArticleTarget = 3
 
 func (s *server) runFeaturedWorker(ctx context.Context) {
@@ -80,7 +80,7 @@ func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTar
 		return nil
 	}
 	client := s.aiClient()
-	brief, err := client.Featured(ctx, candidates, articleTarget)
+	brief, err := client.Featured(ctx, candidates[:min(articleTarget, len(candidates))], articleTarget)
 	if err != nil {
 		return fmt.Errorf("featured briefing generation: %w", err)
 	}
