@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	translationservice "telegram-news/internal/translation"
 )
@@ -61,7 +63,44 @@ func (s *server) currentAISettings() (aiSettings, string) {
 
 func (s *server) aiClient() translationservice.Client {
 	settings, _ := s.currentAISettings()
-	return translationservice.Client{URL: settings.BaseURL, APIKey: settings.APIKey, Model: settings.Model}
+	return translationservice.Client{URL: settings.BaseURL, APIKey: settings.APIKey, Model: settings.Model, HTTPClient: &http.Client{Timeout: 2 * time.Minute, Transport: aiUsageTransport{base: http.DefaultTransport, server: s, model: settings.Model}}}
+}
+
+type aiUsageTransport struct {
+	base   http.RoundTripper
+	server *server
+	model  string
+}
+
+func (transport aiUsageTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := transport.base.RoundTrip(request)
+	if err != nil || response == nil || response.Body == nil || response.StatusCode < 200 || response.StatusCode >= 300 {
+		return response, err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	response.Body.Close()
+	if readErr != nil {
+		return response, readErr
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	var payload struct {
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(body, &payload) == nil && payload.Usage.TotalTokens > 0 {
+		transport.server.recordAIUsage(payload.Usage.PromptTokens, payload.Usage.CompletionTokens, payload.Usage.TotalTokens, transport.model)
+	}
+	return response, nil
+}
+
+func (s *server) recordAIUsage(prompt, completion, total int64, model string) {
+	if total <= 0 {
+		return
+	}
+	_, _ = s.db.ExecContext(context.Background(), `INSERT INTO ai_usage_daily(day,model,prompt_tokens,completion_tokens,total_tokens,requests) VALUES(?,?,?,?,?,1) ON CONFLICT(day,model) DO UPDATE SET prompt_tokens=prompt_tokens+excluded.prompt_tokens,completion_tokens=completion_tokens+excluded.completion_tokens,total_tokens=total_tokens+excluded.total_tokens,requests=requests+1`, time.Now().UTC().Format("2006-01-02"), model, prompt, completion, total)
 }
 
 func (s *server) aiConfigured() bool {

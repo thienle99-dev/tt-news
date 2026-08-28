@@ -380,7 +380,8 @@ function Icon({
     | "sun"
     | "history"
     | "share"
-    | "power";
+    | "power"
+    | "play";
   filled?: boolean;
 }) {
   const common = {
@@ -423,6 +424,7 @@ function Icon({
     history: <><path {...common} d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5" /><path {...common} d="M4 4v4.5h4.5M12 7v5l3 2" /></>,
     share: <><circle {...common} cx="18" cy="5" r="2.5" /><circle {...common} cx="6" cy="12" r="2.5" /><circle {...common} cx="18" cy="19" r="2.5" /><path {...common} d="m8.2 10.8 7.6-4.6m-7.6 7 7.6 4.6" /></>,
     power: <><path {...common} d="M12 3v9" /><path {...common} d="M7.1 5.9a8 8 0 1 0 9.8 0" /></>,
+    play: <path {...common} d="m9 6 9 6-9 6Z" />,
     settings: (
       <>
         <circle {...common} cx="12" cy="12" r="3" />
@@ -1849,7 +1851,7 @@ function AdminSources({
                   </div>
                 </div>
                 <div className="source-row-actions">
-                  <button type="button" className="source-run-button" disabled={!source.enabled || Boolean(operation)} onClick={() => void runFetch([source.id], `source-${source.id}`)}>{operation === `source-${source.id}` ? "Đang chạy…" : "Chạy"}</button>
+                  <button type="button" className="source-run-button" aria-label={`Chạy nguồn ${source.name}`} title={`Chạy nguồn ${source.name}`} disabled={!source.enabled || Boolean(operation)} onClick={() => void runFetch([source.id], `source-${source.id}`)}>{operation === `source-${source.id}` ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="play" />}</button>
                   <button
                     type="button"
                     className={source.enabled ? "source-toggle enabled" : "source-toggle"}
@@ -1899,6 +1901,7 @@ function AdminPage() {
   const [testError, setTestError] = useState("");
   const [featuredArticleCount, setFeaturedArticleCount] = useState(20);
   const [jobsPage, setJobsPage] = useState(1);
+  const [jobsTab, setJobsTab] = useState<"running" | "completed" | "failed">("running");
   const load = async (page = jobsPage) => {
     setBusy("load");
     try {
@@ -2128,11 +2131,14 @@ function AdminPage() {
                       <small>JOBS</small>
                       <h3 id="admin-jobs-title">Tiến trình tác vụ</h3>
                     </div>
-                    {(status.translation_queue > 0 || status.jobs.some(job => job.status === "running")) && <span className="jobs-refreshing" role="status">Tự làm mới</span>}
+                    <span className="jobs-running-count">{status.jobs.filter(job => job.status === "running" || job.status === "queued").length} đang chạy</span>
                   </div>
-                  {status.jobs.length ? (
+                  <div className="jobs-tabs" role="tablist" aria-label="Lọc tác vụ">
+                    {(["running", "completed", "failed"] as const).map(tab => <button type="button" role="tab" aria-selected={jobsTab === tab} className={jobsTab === tab ? "active" : ""} onClick={() => setJobsTab(tab)} key={tab}>{tab === "running" ? "Đang chạy" : tab === "completed" ? "Thành công" : "Thất bại"}</button>)}
+                  </div>
+                  {(() => { const visibleJobs = status.jobs.filter(job => jobsTab === "running" ? job.status === "running" || job.status === "queued" : jobsTab === "completed" ? job.status === "completed" : job.status === "failed"); return visibleJobs.length ? (
                     <ul className="admin-job-list">
-                      {status.jobs.map(job => (
+                      {visibleJobs.map(job => (
                         <li key={`${job.kind}-${job.id}-${job.started_at}`}>
                           <span className={`job-status job-status-${job.status}`}>{job.status === "running" ? "Đang chạy" : job.status === "queued" ? "Đang chờ" : job.status === "completed" ? "Hoàn tất" : job.status === "skipped" ? "Đã bỏ qua" : "Thất bại"}</span>
                           <div>
@@ -2144,8 +2150,12 @@ function AdminPage() {
                         </li>
                       ))}
                     </ul>
-                  ) : <p className="admin-jobs-empty">Chưa có tác vụ nào được ghi nhận.</p>}
+                  ) : <p className="admin-jobs-empty">Không có tác vụ trong mục này.</p>; })()}
                   {status.jobs_total > status.jobs_page_size && <div className="jobs-pagination"><button type="button" className="secondary-button" disabled={status.jobs_page <= 1} onClick={() => { const page = status.jobs_page - 1; setJobsPage(page); void load(page); }}>Trước</button><span>Trang {status.jobs_page}/{Math.ceil(status.jobs_total / status.jobs_page_size)}</span><button type="button" className="secondary-button" disabled={status.jobs_page >= Math.ceil(status.jobs_total / status.jobs_page_size)} onClick={() => { const page = status.jobs_page + 1; setJobsPage(page); void load(page); }}>Sau</button></div>}
+              </section>
+              <section className="settings-card usage-card" aria-labelledby="usage-title">
+                <small>AI USAGE</small><h2 id="usage-title">Token theo ngày</h2>
+                {status.ai_usage.length ? (() => { const max = Math.max(...status.ai_usage.map(item => item.total_tokens)); return <div className="usage-chart" aria-label="Biểu đồ token AI theo ngày">{status.ai_usage.map(item => <div className="usage-bar" key={item.day}><span style={{ height: `${Math.max(8, item.total_tokens / max * 100)}%` }} /><strong>{item.total_tokens.toLocaleString()}</strong><small>{item.day.slice(5)}</small></div>)}</div>; })() : <p className="admin-jobs-empty">Chưa có dữ liệu token. Dữ liệu được ghi nhận từ yêu cầu AI tiếp theo.</p>}
               </section>
               <AdminSources sources={status.sources} token={token} action={action} />
             </div>

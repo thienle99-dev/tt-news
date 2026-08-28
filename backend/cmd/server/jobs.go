@@ -16,6 +16,11 @@ type jobRun struct {
 	StartedAt, FinishedAt                        string
 }
 
+func recoverInterruptedJobs(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `UPDATE job_runs SET status='failed',stage='Đã gián đoạn',detail='Server đã khởi động lại trước khi tác vụ hoàn tất',finished_at=? WHERE status='running'`, time.Now().UTC().Format(time.RFC3339))
+	return err
+}
+
 func (s *server) startJob(ctx context.Context, kind, title, trigger string, target int) (jobRun, context.Context, error) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()

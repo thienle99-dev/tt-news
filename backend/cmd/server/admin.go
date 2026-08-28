@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -139,6 +141,17 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 	if counts["translation_queue"] > 0 {
 		jobs = append(jobs, jobStatus{Kind: "translation", Title: "Dịch bài tiếng Việt", Status: "queued", Detail: fmt.Sprintf("%d bài đang chờ xử lý", counts["translation_queue"]), TargetCount: int(counts["translation_queue"])})
 	}
+	usage := []map[string]any{}
+	if usageRows, usageErr := s.db.QueryContext(r.Context(), `SELECT day,SUM(prompt_tokens),SUM(completion_tokens),SUM(total_tokens),SUM(requests) FROM ai_usage_daily WHERE day>=? GROUP BY day ORDER BY day`, time.Now().UTC().AddDate(0, 0, -13).Format("2006-01-02")); usageErr == nil {
+		for usageRows.Next() {
+			var day string
+			var prompt, completion, total, requests int64
+			if usageRows.Scan(&day, &prompt, &completion, &total, &requests) == nil {
+				usage = append(usage, map[string]any{"day": day, "prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total, "requests": requests})
+			}
+		}
+		usageRows.Close()
+	}
 	jsonOut(w, 200, map[string]any{
 		"sources":           sources,
 		"translation_queue": counts["translation_queue"],
@@ -146,6 +159,7 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		"jobs_page":         page,
 		"jobs_page_size":    jobsPageSize,
 		"jobs_total":        jobsTotal,
+		"ai_usage":          usage,
 		"ai":                map[string]any{"model": aiSettings.Model, "configured": s.aiConfigured(), "config_source": aiSource, "translations_generated": counts["translations_generated"], "featured_briefs": counts["featured_briefs"], "feedback": counts["ai_feedback"], "cost_tracking": "provider token/cost usage is not exposed by the configured Chat Completions client"},
 	})
 }
@@ -252,12 +266,26 @@ func (s *server) adminRegenerateFeatured(w http.ResponseWriter, r *http.Request)
 		}
 		articleTarget = body.ArticleCount
 	}
+	var activeJobID int64
+	err := s.db.QueryRowContext(r.Context(), `SELECT id FROM job_runs WHERE kind='daily_brief' AND status='running' ORDER BY id DESC LIMIT 1`).Scan(&activeJobID)
+	if err == nil {
+		jsonErr(w, http.StatusConflict, fmt.Sprintf("daily briefing job %d is already running", activeJobID))
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		jsonErr(w, http.StatusInternalServerError, "could not check daily briefing job")
+		return
+	}
 	slot := time.Now().UTC().Truncate(s.cfg.FeaturedBriefInterval).Format(time.RFC3339)
 	if _, err := s.db.ExecContext(r.Context(), "DELETE FROM featured_briefs WHERE slot_start=?", slot); err != nil {
 		jsonErr(w, 500, "could not reset featured brief")
 		return
 	}
-	go s.generateFeaturedBriefWithTarget(context.Background(), articleTarget)
+	go func() {
+		if err := s.generateFeaturedBriefWithTarget(context.Background(), articleTarget); err != nil {
+			log.Printf("manual featured briefing: %v", err)
+		}
+	}()
 	jsonOut(w, http.StatusAccepted, map[string]any{"status": "featured brief generation started", "article_count": articleTarget})
 }
 

@@ -64,6 +64,9 @@ func main() {
 	if err = migrate(db); err != nil {
 		log.Fatal(err)
 	}
+	if err = recoverInterruptedJobs(context.Background(), db); err != nil {
+		log.Printf("recover interrupted jobs: %v", err)
+	}
 	ai, err := newAIRuntimeConfig(db, cfg)
 	if err != nil {
 		log.Fatal(err)
