@@ -15,6 +15,13 @@
 .filter-select-wrap > .filter-icon:last-child,.source-select-trigger > .filter-icon:last-child { position:absolute; right:11px; width:18px; height:18px; color:var(--muted); pointer-events:none; }
 .source-select-trigger { width:100%; padding:0 34px 0 12px; gap:9px; cursor:pointer; text-align:left; }
 .source-select-trigger > span { overflow:hidden; color:var(--ink); font:14px Roboto,sans-serif; letter-spacing:normal; text-overflow:ellipsis; text-transform:none; white-space:nowrap; }
+.source-selected-tags { display:flex; flex-wrap:wrap; gap:6px; padding-top:2px; }
+.source-selected-tag { display:inline-flex; max-width:100%; align-items:center; gap:2px; min-height:30px; padding:3px 3px 3px 9px; border:1px solid color-mix(in srgb,var(--accent) 36%,var(--line)); border-radius:999px; background:var(--accent-soft); color:var(--accent); font:600 12px/1 Roboto,sans-serif; }
+.source-selected-tag > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.source-selected-tag button { display:grid; width:26px; height:26px; flex:0 0 26px; place-items:center; border:0; border-radius:50%; background:transparent; color:currentColor; }
+.source-selected-tag button:hover { background:color-mix(in srgb,var(--accent) 16%,transparent); }
+.source-selected-tag button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.source-selected-tag .filter-icon { width:15px; height:15px; }
 .source-select-menu { position:absolute; z-index:25; top:calc(100% + 6px); right:0; left:0; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:var(--shadow); }
 .source-search { display:flex; align-items:center; gap:8px; min-height:44px; margin:8px; padding:0 10px; border:1px solid var(--line); border-radius:10px; color:var(--muted); }
 .source-search input { width:100%; min-width:0; border:0; outline:0; background:transparent; color:var(--ink); font:14px Roboto,sans-serif; }
