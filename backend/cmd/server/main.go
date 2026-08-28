@@ -178,6 +178,8 @@ type server struct {
 	feed           *gofeed.Parser
 	translationMu  sync.Mutex
 	featuredMu     sync.Mutex
+	jobMu          sync.Mutex
+	jobCancels     map[int64]context.CancelFunc
 	goldRatesMu    sync.Mutex
 	goldRates      []goldRate
 	goldRatesUntil time.Time
@@ -227,6 +229,7 @@ func (s *server) routes() http.Handler {
 		r.Post("/rss/fetch", s.adminFetchRSS)
 		r.Post("/translations/enqueue", s.adminEnqueueTranslations)
 		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
+		r.Delete("/jobs/{id}", s.adminCancelJob)
 		r.Patch("/sources/{id}", s.adminUpdateSource)
 		r.Get("/ai/config", s.adminAIConfig)
 		r.Put("/ai/config", s.adminSaveAIConfig)
@@ -1154,8 +1157,19 @@ func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, so
 		sinceLabel = since.Format("2006-01-02") + " UTC"
 	}
 	log.Printf("rss crawl started: sources=%d filter=%q since=%s", len(sources), nameFilter, sinceLabel)
+	job, jobCtx, jobErr := s.startJob(ctx, "crawl", "Crawl nguồn RSS", "scheduled", len(sources))
+	if jobErr != nil {
+		log.Printf("rss crawl skipped: %v", jobErr)
+		return
+	}
+	ctx = jobCtx
 	total := rssFetchResult{}
+	processed := 0
+	failed := int64(0)
 	crawlStarted := time.Now()
+	defer func() {
+		s.finishJob(context.Background(), job, "completed", fmt.Sprintf("%d/%d nguồn · %d bài mới · %d đã có · %d ngoài thời gian · %d không hợp lệ · %d lỗi · %s", processed-int(failed), len(sources), total.Inserted, total.Existing, total.BeforeSince, total.Invalid, failed, time.Since(crawlStarted).Round(time.Second)), int64(processed), failed)
+	}()
 	workers := min(s.cfg.RSSFetchWorkers, len(sources))
 	type outcome struct {
 		source source
@@ -1184,15 +1198,17 @@ func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, so
 		workersDone.Wait()
 		close(outcomes)
 	}()
-	processed := 0
 	for completed := range outcomes {
 		processed++
 		s.recordSourceHealth(ctx, completed.source.ID, completed.result.Inserted, completed.err)
 		if completed.err != nil {
+			failed++
+			s.updateJob(ctx, job, "Đang crawl nguồn", completed.source.Name+": lỗi", int64(processed), failed)
 			log.Printf("rss [%d/%d] %s failed after %s: %v", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.err)
 			continue
 		}
 		total.add(completed.result)
+		s.updateJob(ctx, job, "Đang crawl nguồn", completed.source.Name, int64(processed), failed)
 		log.Printf("rss [%d/%d] %s done in %s: feed=%d new=%d existing=%d before-date=%d invalid=%d", processed, len(sources), completed.source.Name, completed.result.Duration.Round(time.Millisecond), completed.result.FeedItems, completed.result.Inserted, completed.result.Existing, completed.result.BeforeSince, completed.result.Invalid)
 	}
 	log.Printf("rss crawl finished in %s: sources=%d feed-items=%d new=%d existing=%d before-date=%d invalid=%d", time.Since(crawlStarted).Round(time.Millisecond), processed, total.FeedItems, total.Inserted, total.Existing, total.BeforeSince, total.Invalid)

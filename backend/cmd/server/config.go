@@ -8,20 +8,20 @@ import (
 
 type config struct {
 	Port, DBPath, BotToken, MiniAppURL, AdminToken string
-	GoldRatesURL                               string
-	AIURL, AIKey, AIModel                      string
-	RSSInterval, AuthMaxAge                    time.Duration
-	FeaturedBriefInterval, FeaturedBriefWindow time.Duration
-	ContentCleanupInterval                     time.Duration
-	RSSContentUserAgent                        string
-	RSSFetchWorkers                            int
-	ContentCleanupLimit                        int
-	DevAuth                                    bool
-	AIBackgroundScanning                       bool
-	AITranslateEnabled                         bool
-	AITranslateLanguage                        string
-	RSSTranslateVietnamese                     bool
-	DevUserID                                  int64
+	GoldRatesURL                                   string
+	AIURL, AIKey, AIModel                          string
+	RSSInterval, AuthMaxAge                        time.Duration
+	FeaturedBriefInterval, FeaturedBriefWindow     time.Duration
+	ContentCleanupInterval                         time.Duration
+	RSSContentUserAgent                            string
+	RSSFetchWorkers                                int
+	ContentCleanupLimit                            int
+	DevAuth                                        bool
+	AIBackgroundScanning                           bool
+	AITranslateEnabled                             bool
+	AITranslateLanguage                            string
+	RSSTranslateVietnamese                         bool
+	DevUserID                                      int64
 }
 
 func loadConfig() config {

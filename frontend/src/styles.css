@@ -366,6 +366,30 @@ small {
   width: 16px;
   height: 16px;
 }
+.share {
+  position: absolute;
+  z-index: 2;
+  top: 60px;
+  right: 10px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  color: var(--ink);
+  backdrop-filter: blur(8px);
+}
+.share:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.share .icon,
+.read-mode-button .icon {
+  width: 16px;
+  height: 16px;
+}
 .source-citation,
 .detail-citation {
   display: inline-flex;
@@ -568,6 +592,10 @@ small {
   -webkit-line-clamp: 2;
 }
 .news-card .save {
+  background: transparent;
+  backdrop-filter: none;
+}
+.news-card .share {
   background: transparent;
   backdrop-filter: none;
 }

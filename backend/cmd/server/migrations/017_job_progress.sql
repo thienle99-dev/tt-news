@@ -1,0 +1,7 @@
+ALTER TABLE job_runs ADD COLUMN trigger TEXT NOT NULL DEFAULT 'scheduled';
+ALTER TABLE job_runs ADD COLUMN stage TEXT NOT NULL DEFAULT '';
+ALTER TABLE job_runs ADD COLUMN completed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE job_runs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE job_runs ADD COLUMN metadata TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_job_runs_active ON job_runs(kind, status, id DESC);

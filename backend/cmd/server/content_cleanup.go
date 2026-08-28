@@ -7,12 +7,9 @@ import (
 	"time"
 )
 
-const cleanupReviewVersion = "title-only-v1"
+const cleanupReviewVersion = "rule-based-v1"
 
 func (s *server) runContentCleanupWorker(ctx context.Context) {
-	if !s.aiConfigured() {
-		log.Print("content cleanup AI review disabled; rule-based spam filtering remains enabled")
-	}
 	s.cleanupJunkArticles(ctx)
 	ticker := time.NewTicker(s.cfg.ContentCleanupInterval)
 	defer ticker.Stop()
@@ -50,9 +47,7 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 		log.Printf("content cleanup rows: %v", err)
 		return
 	}
-	aiEnabled := s.aiConfigured()
-	client := s.aiClient()
-	removed, removedWithoutAI, reviewed := 0, 0, 0
+	removed, reviewed := 0, 0
 	for _, item := range candidates {
 		if isObviousJunk(item.title) {
 			deleted, deleteErr := s.deleteJunkArticle(ctx, item.id)
@@ -62,36 +57,16 @@ func (s *server) cleanupJunkArticles(ctx context.Context) {
 			}
 			if deleted {
 				removed++
-				removedWithoutAI++
 			}
-			continue
-		}
-		if !aiEnabled {
-			continue
-		}
-		junk, reviewErr := client.IsJunk(ctx, item.title)
-		if reviewErr != nil {
-			log.Printf("content cleanup review %d: %v", item.id, reviewErr)
 			continue
 		}
 		reviewed++
-		if junk {
-			deleted, deleteErr := s.deleteJunkArticle(ctx, item.id)
-			if deleteErr != nil {
-				log.Printf("content cleanup delete %d: %v", item.id, deleteErr)
-				continue
-			}
-			if deleted {
-				removed++
-			}
-			continue
-		}
 		if _, err = s.db.ExecContext(ctx, "UPDATE articles SET content_reviewed_at=?,content_review_version=? WHERE id=?", time.Now().UTC().Format(time.RFC3339), cleanupReviewVersion, item.id); err != nil {
 			log.Printf("content cleanup mark %d: %v", item.id, err)
 		}
 	}
-	if reviewed > 0 || removedWithoutAI > 0 {
-		log.Printf("content cleanup finished: reviewed=%d removed=%d removed-without-ai=%d", reviewed, removed, removedWithoutAI)
+	if reviewed > 0 || removed > 0 {
+		log.Printf("content cleanup finished: reviewed=%d removed=%d", reviewed, removed)
 	}
 }
 

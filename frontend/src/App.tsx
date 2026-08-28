@@ -120,6 +120,7 @@ const text = {
     back: "Back",
     readOriginal: "Read original article",
     openArticle: "Open article",
+    share: "Share article",
     save: "Save article",
     unsave: "Remove saved article",
     translating: "Translating to Vietnamese…",
@@ -221,6 +222,7 @@ const text = {
     back: "Quay lại",
     readOriginal: "Đọc bài gốc",
     openArticle: "Mở bài viết",
+    share: "Chia sẻ bài viết",
     save: "Lưu bài viết",
     unsave: "Bỏ lưu bài viết",
     translating: "Đang dịch sang tiếng Việt…",
@@ -321,6 +323,23 @@ const articlePath = (article: Article) =>
       .replace(/(^-|-$)/g, "")
       .slice(0, 90) || "article"
   }`;
+const shareArticle = async (article: Article) => {
+  const url = new URL(articlePath(article), window.location.origin).href;
+  const telegramShareURL = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(article.title)}`;
+  if (window.Telegram?.WebApp?.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(telegramShareURL);
+    return;
+  }
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: article.title, text: article.title, url });
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+  }
+  window.open(telegramShareURL, "_blank", "noopener,noreferrer");
+};
 const articleIDFromPath = () => {
   const match = window.location.pathname.match(/^\/news\/(\d+)(?:-|$)/);
   return match ? Number(match[1]) : null;
@@ -359,7 +378,8 @@ function Icon({
     | "pen"
     | "moon"
     | "sun"
-    | "history";
+    | "history"
+    | "share";
   filled?: boolean;
 }) {
   const common = {
@@ -400,6 +420,7 @@ function Icon({
       </>
     ),
     history: <><path {...common} d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5" /><path {...common} d="M4 4v4.5h4.5M12 7v5l3 2" /></>,
+    share: <><circle {...common} cx="18" cy="5" r="2.5" /><circle {...common} cx="6" cy="12" r="2.5" /><circle {...common} cx="18" cy="19" r="2.5" /><path {...common} d="m8.2 10.8 7.6-4.6m-7.6 7 7.6 4.6" /></>,
     settings: (
       <>
         <circle {...common} cx="12" cy="12" r="3" />
@@ -866,6 +887,14 @@ function Card({
       >
         <Icon name="bookmark" filled={article.is_saved} />
       </button>
+      <button
+        type="button"
+        className="share"
+        aria-label={`${t.share}: ${article.title}`}
+        onClick={() => void shareArticle(article)}
+      >
+        <Icon name="share" />
+      </button>
       {select && <label className="save"><input type="checkbox" checked={selected} onChange={() => select(article)} aria-label={`${t.selectSaved}: ${article.title}`} /></label>}
     </article>
   );
@@ -973,6 +1002,14 @@ function Detail({
           onClick={() => setReadingMode((enabled) => !enabled)}
         >
           {readingMode ? t.exitReadMode : t.readMode}
+        </button>
+        <button
+          type="button"
+          className="read-mode-button"
+          onClick={() => void shareArticle(article)}
+        >
+          <Icon name="share" />
+          {t.share}
         </button>
       </div>
       {article.image_url && (
@@ -1860,10 +1897,11 @@ function AdminPage() {
   const [testReply, setTestReply] = useState("");
   const [testError, setTestError] = useState("");
   const [featuredArticleCount, setFeaturedArticleCount] = useState(20);
-  const load = async () => {
+  const [jobsPage, setJobsPage] = useState(1);
+  const load = async (page = jobsPage) => {
     setBusy("load");
     try {
-      const [next, aiConfig] = await Promise.all([api.adminStatus(token), api.adminAIConfig(token)]);
+      const [next, aiConfig] = await Promise.all([api.adminStatus(token, page), api.adminAIConfig(token)]);
       sessionStorage.setItem("admin-token", token);
       setStatus(next);
       setAIForm({ base_url: aiConfig.base_url, api_key: "", model: aiConfig.model });
@@ -1885,6 +1923,15 @@ function AdminPage() {
       setError(caught instanceof Error ? caught.message : "Thao tác không thành công.");
       return false;
     }
+  };
+  const cancelJob = async (id: number) => {
+    setBusy(`cancel-${id}`); setError("");
+    try {
+      await api.adminCancelJob(token, id);
+      setMessage("Đã gửi yêu cầu hủy tác vụ.");
+      await load();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể hủy tác vụ."); }
+    finally { setBusy(""); }
   };
   const loadModels = async () => {
     setBusy("models"); setError(""); setMessage("");
@@ -1948,10 +1995,10 @@ function AdminPage() {
   useEffect(() => {
     if (!status || !token || (status.translation_queue === 0 && !status.jobs.some(job => job.status === "running"))) return;
     const refresh = window.setInterval(() => {
-      void api.adminStatus(token).then(setStatus).catch(() => {});
+      void api.adminStatus(token, jobsPage).then(setStatus).catch(() => {});
     }, 5_000);
     return () => window.clearInterval(refresh);
-  }, [status, token]);
+  }, [status, token, jobsPage]);
   return (
     <main className="admin-shell">
       <div className="app-shell">
@@ -2087,7 +2134,7 @@ function AdminPage() {
                           <span className={`job-status job-status-${job.status}`}>{job.status === "running" ? "Đang chạy" : job.status === "queued" ? "Đang chờ" : job.status === "completed" ? "Hoàn tất" : job.status === "skipped" ? "Đã bỏ qua" : "Thất bại"}</span>
                           <div>
                             <strong>{job.title}</strong>
-                            <p>{job.detail || (job.target_count ? `${job.target_count} tin` : "Đang chuẩn bị tác vụ")}</p>
+                            <p>{job.status === "running" ? (job.stage || "Đang chuẩn bị tác vụ") : (job.detail || job.stage || "Chưa có chi tiết")}{job.status === "running" && job.target_count > 0 ? ` · ${job.completed_count}/${job.target_count}` : ""}{job.status === "running" && job.failed_count > 0 ? ` · ${job.failed_count} lỗi` : ""}</p>
                           </div>
                           {job.started_at && <time dateTime={job.started_at}>{formatAdminTime(job.finished_at || job.started_at)}</time>}
                         </li>

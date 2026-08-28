@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,24 +92,38 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		counts[key] = count
 	}
 	type jobStatus struct {
-		ID          int64  `json:"id"`
-		Kind        string `json:"kind"`
-		Title       string `json:"title"`
-		Status      string `json:"status"`
-		Detail      string `json:"detail"`
-		TargetCount int    `json:"target_count"`
-		StartedAt   string `json:"started_at"`
-		FinishedAt  string `json:"finished_at"`
+		ID             int64  `json:"id"`
+		Kind           string `json:"kind"`
+		Title          string `json:"title"`
+		Status         string `json:"status"`
+		Detail         string `json:"detail"`
+		TargetCount    int    `json:"target_count"`
+		CompletedCount int    `json:"completed_count"`
+		FailedCount    int    `json:"failed_count"`
+		Trigger        string `json:"trigger"`
+		Stage          string `json:"stage"`
+		StartedAt      string `json:"started_at"`
+		FinishedAt     string `json:"finished_at"`
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("jobs_page"))
+	if page < 1 {
+		page = 1
+	}
+	const jobsPageSize = 10
+	var jobsTotal int
+	if err = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM job_runs`).Scan(&jobsTotal); err != nil {
+		jsonErr(w, 500, "could not count job status")
+		return
 	}
 	jobs := []jobStatus{}
-	jobRows, err := s.db.QueryContext(r.Context(), `SELECT id,kind,title,status,detail,target_count,started_at,finished_at FROM job_runs ORDER BY id DESC LIMIT 8`)
+	jobRows, err := s.db.QueryContext(r.Context(), `SELECT id,kind,title,status,detail,target_count,completed_count,failed_count,trigger,stage,started_at,finished_at FROM job_runs ORDER BY id DESC LIMIT ? OFFSET ?`, jobsPageSize, (page-1)*jobsPageSize)
 	if err != nil {
 		jsonErr(w, 500, "could not load job status")
 		return
 	}
 	for jobRows.Next() {
 		var job jobStatus
-		if err = jobRows.Scan(&job.ID, &job.Kind, &job.Title, &job.Status, &job.Detail, &job.TargetCount, &job.StartedAt, &job.FinishedAt); err != nil {
+		if err = jobRows.Scan(&job.ID, &job.Kind, &job.Title, &job.Status, &job.Detail, &job.TargetCount, &job.CompletedCount, &job.FailedCount, &job.Trigger, &job.Stage, &job.StartedAt, &job.FinishedAt); err != nil {
 			jobRows.Close()
 			jsonErr(w, 500, "could not read job status")
 			return
@@ -128,6 +143,9 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		"sources":           sources,
 		"translation_queue": counts["translation_queue"],
 		"jobs":              jobs,
+		"jobs_page":         page,
+		"jobs_page_size":    jobsPageSize,
+		"jobs_total":        jobsTotal,
 		"ai":                map[string]any{"model": aiSettings.Model, "configured": s.aiConfigured(), "config_source": aiSource, "translations_generated": counts["translations_generated"], "featured_briefs": counts["featured_briefs"], "feedback": counts["ai_feedback"], "cost_tracking": "provider token/cost usage is not exposed by the configured Chat Completions client"},
 	})
 }
@@ -140,6 +158,19 @@ func (s *server) adminFetchRSS(w http.ResponseWriter, r *http.Request) {
 	}
 	go s.fetchSourcesSelected(context.Background(), "", sourceIDs, time.Time{})
 	jsonOut(w, http.StatusAccepted, map[string]any{"status": "rss fetch started", "source_count": len(sourceIDs)})
+}
+
+func (s *server) adminCancelJob(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		jsonErr(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+	if err = s.cancelJob(r.Context(), id); err != nil {
+		jsonErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	jsonOut(w, http.StatusOK, map[string]string{"status": "job cancellation requested"})
 }
 
 func adminSourceIDs(r *http.Request) ([]int64, error) {

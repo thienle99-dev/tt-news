@@ -47,18 +47,17 @@ func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTar
 		return errors.New("AI is not configured")
 	}
 	articleTarget = min(max(articleTarget, minFeaturedArticleTarget), featuredCandidateLimit)
-	jobID, jobErr := s.startJob(ctx, "daily_brief", "Tạo bản tin hôm nay", articleTarget)
+	job, jobCtx, jobErr := s.startJob(ctx, "daily_brief", "Tạo bản tin hôm nay", "scheduled", articleTarget)
 	if jobErr != nil {
-		log.Printf("featured job tracking: %v", jobErr)
+		return jobErr
 	}
+	ctx = jobCtx
 	jobStatus, jobDetail := "completed", "Bản tin đã được tạo"
 	defer func() {
 		if err != nil {
 			jobStatus, jobDetail = "failed", err.Error()
 		}
-		if jobID != 0 {
-			s.finishJob(context.Background(), jobID, jobStatus, jobDetail)
-		}
+		s.finishJob(context.Background(), job, jobStatus, jobDetail, 0, 0)
 	}()
 	s.featuredMu.Lock()
 	defer s.featuredMu.Unlock()
@@ -100,21 +99,6 @@ func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTar
 	}
 	log.Printf("featured briefing generated: topics=%d articles=%d candidates=%d", len(brief.Topics), min(articleTarget, len(candidates)), len(candidates))
 	return nil
-}
-
-func (s *server) startJob(ctx context.Context, kind, title string, targetCount int) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `INSERT INTO job_runs(kind,title,status,target_count,started_at) VALUES(?,?, 'running', ?, ?)`, kind, title, targetCount, time.Now().UTC().Format(time.RFC3339))
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
-}
-
-func (s *server) finishJob(ctx context.Context, jobID int64, status, detail string) {
-	_, err := s.db.ExecContext(ctx, `UPDATE job_runs SET status=?,detail=?,finished_at=? WHERE id=?`, status, detail, time.Now().UTC().Format(time.RFC3339), jobID)
-	if err != nil {
-		log.Printf("job %d update: %v", jobID, err)
-	}
 }
 
 func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]translationservice.FeaturedCandidate, error) {
