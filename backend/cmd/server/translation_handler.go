@@ -71,15 +71,15 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := article.FullContent
+	body := bestArticleBody(article.FullContent, article.Description, "")
 	extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(r.Context(), article.URL)
 	if fetchErr != nil {
 		log.Printf("resummarize article %d: could not refresh full content: %v", article.ID, fetchErr)
-	} else if len(extracted.Text) > len(body) {
-		body = extracted.Text
+	} else {
+		body = bestArticleBody(body, "", extracted.Text)
 	}
 	if len(body) < 300 {
-		jsonErr(w, http.StatusConflict, "full article content is unavailable; crawl the source again")
+		jsonErr(w, http.StatusConflict, "the source did not provide enough public article content to summarize")
 		return
 	}
 	aiSettings, _ := s.currentAISettings()
@@ -98,4 +98,17 @@ func (s *server) resummarizeArticle(w http.ResponseWriter, r *http.Request) {
 		log.Printf("resummarize article %d translation cleanup: %v", article.ID, err)
 	}
 	jsonOut(w, http.StatusOK, translationResult(brief))
+}
+
+// bestArticleBody chooses the most complete public text already available to
+// the application. RSS descriptions are useful fallbacks for sources that
+// block a later page fetch, while a fresh extraction wins only when longer.
+func bestArticleBody(values ...string) string {
+	best := ""
+	for _, value := range values {
+		if len(value) > len(best) {
+			best = value
+		}
+	}
+	return best
 }
