@@ -63,11 +63,12 @@ type translation struct {
 }
 
 type featuredTopic struct {
-	ID       int64     `json:"id"`
-	Position int       `json:"position"`
-	Title    string    `json:"title"`
-	Summary  string    `json:"summary"`
-	Articles []article `json:"articles"`
+	ID           int64     `json:"id"`
+	Position     int       `json:"position"`
+	Title        string    `json:"title"`
+	Summary      string    `json:"summary"`
+	WhyItMatters string    `json:"why_it_matters"`
+	Articles     []article `json:"articles"`
 }
 
 type featuredBrief struct {
@@ -77,6 +78,7 @@ type featuredBrief struct {
 	WindowEnd   string          `json:"window_end"`
 	Title       string          `json:"title"`
 	Intro       string          `json:"intro"`
+	Takeaways   []string        `json:"takeaways"`
 	Topics      []featuredTopic `json:"topics"`
 }
 

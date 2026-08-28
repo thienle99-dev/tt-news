@@ -56,7 +56,7 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 		log.Printf("featured briefing candidates: %v", err)
 		return
 	}
-	if len(candidates) < 5 {
+	if len(candidates) < 3 {
 		log.Printf("featured briefing skipped: only %d eligible articles", len(candidates))
 		return
 	}
@@ -112,15 +112,20 @@ func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]tra
 }
 
 func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []translationservice.FeaturedCandidate) error {
-	if brief.Title == "" || brief.Intro == "" || len(brief.Topics) < 5 || len(brief.Topics) > 8 {
-		return errors.New("brief must contain a title, intro, and 5 to 8 topics")
+	if brief.Title == "" || brief.Intro == "" || len(brief.Takeaways) != 3 || len(brief.Topics) < 3 || len(brief.Topics) > 5 {
+		return errors.New("brief must contain a title, intro, 3 takeaways, and 3 to 5 topics")
+	}
+	for _, takeaway := range brief.Takeaways {
+		if strings.TrimSpace(takeaway) == "" {
+			return errors.New("brief contains an empty takeaway")
+		}
 	}
 	allowed, used := map[int64]bool{}, map[int64]bool{}
 	for _, item := range candidates {
 		allowed[item.ID] = true
 	}
 	for _, topic := range brief.Topics {
-		if strings.TrimSpace(topic.Title) == "" || strings.TrimSpace(topic.Summary) == "" || len(topic.ArticleIDs) < 1 || len(topic.ArticleIDs) > 3 {
+		if strings.TrimSpace(topic.Title) == "" || strings.TrimSpace(topic.Summary) == "" || strings.TrimSpace(topic.WhyItMatters) == "" || len(topic.ArticleIDs) < 1 || len(topic.ArticleIDs) > 3 {
 			return errors.New("invalid featured topic")
 		}
 		for _, id := range topic.ArticleIDs {
@@ -134,11 +139,16 @@ func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []
 }
 
 func validateFeaturedTranslation(translated, original translationservice.FeaturedBrief) error {
-	if translated.Title == "" || translated.Intro == "" || len(translated.Topics) != len(original.Topics) {
+	if translated.Title == "" || translated.Intro == "" || len(translated.Takeaways) != len(original.Takeaways) || len(translated.Topics) != len(original.Topics) {
 		return errors.New("translated briefing shape does not match")
 	}
+	for _, takeaway := range translated.Takeaways {
+		if strings.TrimSpace(takeaway) == "" {
+			return errors.New("translated briefing contains an empty takeaway")
+		}
+	}
 	for index, topic := range translated.Topics {
-		if topic.Title == "" || topic.Summary == "" || len(topic.ArticleIDs) != len(original.Topics[index].ArticleIDs) {
+		if topic.Title == "" || topic.Summary == "" || topic.WhyItMatters == "" || len(topic.ArticleIDs) != len(original.Topics[index].ArticleIDs) {
 			return errors.New("translated topic shape does not match")
 		}
 		for idIndex, id := range topic.ArticleIDs {
@@ -167,8 +177,16 @@ func (s *server) storeFeaturedBrief(ctx context.Context, slot, start, end time.T
 	if _, err = tx.ExecContext(ctx, `INSERT INTO featured_brief_translations(brief_id,language_code,title,intro) VALUES(?,'vi',?,?)`, briefID, vietnamese.Title, vietnamese.Intro); err != nil {
 		return err
 	}
+	for position, takeaway := range brief.Takeaways {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO featured_brief_takeaways(brief_id,position,text) VALUES(?,?,?)`, briefID, position, takeaway); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO featured_brief_takeaway_translations(brief_id,language_code,position,text) VALUES(?,'vi',?,?)`, briefID, position, vietnamese.Takeaways[position]); err != nil {
+			return err
+		}
+	}
 	for position, topic := range brief.Topics {
-		result, err = tx.ExecContext(ctx, `INSERT INTO featured_topics(brief_id,position,title,summary) VALUES(?,?,?,?)`, briefID, position, topic.Title, topic.Summary)
+		result, err = tx.ExecContext(ctx, `INSERT INTO featured_topics(brief_id,position,title,summary,why_it_matters) VALUES(?,?,?,?,?)`, briefID, position, topic.Title, topic.Summary, topic.WhyItMatters)
 		if err != nil {
 			return err
 		}
@@ -177,7 +195,7 @@ func (s *server) storeFeaturedBrief(ctx context.Context, slot, start, end time.T
 			return err
 		}
 		vi := vietnamese.Topics[position]
-		if _, err = tx.ExecContext(ctx, `INSERT INTO featured_topic_translations(topic_id,language_code,title,summary) VALUES(?,'vi',?,?)`, topicID, vi.Title, vi.Summary); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO featured_topic_translations(topic_id,language_code,title,summary,why_it_matters) VALUES(?,'vi',?,?,?)`, topicID, vi.Title, vi.Summary, vi.WhyItMatters); err != nil {
 			return err
 		}
 		for articlePosition, articleID := range topic.ArticleIDs {
@@ -218,7 +236,13 @@ func (s *server) featured(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	brief.Title, brief.Intro = title, intro
-	rows, err := s.db.QueryContext(r.Context(), `SELECT ft.id,ft.position,COALESCE(tt.title,ft.title),COALESCE(tt.summary,ft.summary) FROM featured_topics ft LEFT JOIN featured_topic_translations tt ON tt.topic_id=ft.id AND tt.language_code=? WHERE ft.brief_id=? ORDER BY ft.position`, language, brief.ID)
+	takeaways, err := s.featuredTakeaways(r.Context(), brief.ID, language)
+	if err != nil {
+		jsonErr(w, 500, "could not load featured takeaways")
+		return
+	}
+	brief.Takeaways = takeaways
+	rows, err := s.db.QueryContext(r.Context(), `SELECT ft.id,ft.position,COALESCE(tt.title,ft.title),COALESCE(tt.summary,ft.summary),COALESCE(NULLIF(tt.why_it_matters,''),ft.why_it_matters) FROM featured_topics ft LEFT JOIN featured_topic_translations tt ON tt.topic_id=ft.id AND tt.language_code=? WHERE ft.brief_id=? ORDER BY ft.position`, language, brief.ID)
 	if err != nil {
 		jsonErr(w, 500, "could not load featured topics")
 		return
@@ -226,7 +250,7 @@ func (s *server) featured(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	for rows.Next() {
 		var topic featuredTopic
-		if err = rows.Scan(&topic.ID, &topic.Position, &topic.Title, &topic.Summary); err != nil {
+		if err = rows.Scan(&topic.ID, &topic.Position, &topic.Title, &topic.Summary, &topic.WhyItMatters); err != nil {
 			jsonErr(w, 500, "could not read featured topics")
 			return
 		}
@@ -238,6 +262,23 @@ func (s *server) featured(w http.ResponseWriter, r *http.Request) {
 		brief.Topics = append(brief.Topics, topic)
 	}
 	jsonOut(w, 200, brief)
+}
+
+func (s *server) featuredTakeaways(ctx context.Context, briefID int64, language string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(t.text,''),b.text) FROM featured_brief_takeaways b LEFT JOIN featured_brief_takeaway_translations t ON t.brief_id=b.brief_id AND t.position=b.position AND t.language_code=? WHERE b.brief_id=? ORDER BY b.position`, language, briefID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var item string
+		if err = rows.Scan(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *server) featuredTopicArticles(ctx context.Context, topicID int64, language string, r *http.Request) ([]article, error) {

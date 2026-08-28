@@ -7,14 +7,14 @@ import (
 )
 
 func TestValidateFeaturedBrief(t *testing.T) {
-	candidates := make([]translationservice.FeaturedCandidate, 5)
-	topics := make([]translationservice.FeaturedTopic, 5)
+	candidates := make([]translationservice.FeaturedCandidate, 3)
+	topics := make([]translationservice.FeaturedTopic, 3)
 	for index := range candidates {
 		id := int64(index + 1)
 		candidates[index] = translationservice.FeaturedCandidate{ID: id}
-		topics[index] = translationservice.FeaturedTopic{Title: "Topic", Summary: "Summary", ArticleIDs: []int64{id}}
+		topics[index] = translationservice.FeaturedTopic{Title: "Topic", Summary: "Summary", WhyItMatters: "Impact", ArticleIDs: []int64{id}}
 	}
-	brief := translationservice.FeaturedBrief{Title: "Featured", Intro: "Intro", Topics: topics}
+	brief := translationservice.FeaturedBrief{Title: "Featured", Intro: "Intro", Takeaways: []string{"One", "Two", "Three"}, Topics: topics}
 	if err := validateFeaturedBrief(brief, candidates); err != nil {
 		t.Fatalf("valid brief rejected: %v", err)
 	}
@@ -22,11 +22,16 @@ func TestValidateFeaturedBrief(t *testing.T) {
 	if err := validateFeaturedBrief(brief, candidates); err == nil {
 		t.Fatal("duplicate article accepted")
 	}
+	brief.Topics[1].ArticleIDs[0] = 2
+	brief.Takeaways = brief.Takeaways[:2]
+	if err := validateFeaturedBrief(brief, candidates); err == nil {
+		t.Fatal("brief with fewer than three takeaways accepted")
+	}
 }
 
 func TestValidateFeaturedTranslation(t *testing.T) {
-	original := translationservice.FeaturedBrief{Title: "Featured", Intro: "Intro", Topics: []translationservice.FeaturedTopic{{Title: "Topic", Summary: "Summary", ArticleIDs: []int64{1, 2}}, {Title: "Topic 2", Summary: "Summary", ArticleIDs: []int64{3}}}}
-	translated := translationservice.FeaturedBrief{Title: "Nổi bật", Intro: original.Intro, Topics: []translationservice.FeaturedTopic{{Title: "Chủ đề", Summary: "Tóm tắt", ArticleIDs: []int64{1, 2}}, {Title: "Chủ đề 2", Summary: "Tóm tắt", ArticleIDs: []int64{3}}}}
+	original := translationservice.FeaturedBrief{Title: "Featured", Intro: "Intro", Takeaways: []string{"One", "Two", "Three"}, Topics: []translationservice.FeaturedTopic{{Title: "Topic", Summary: "Summary", WhyItMatters: "Impact", ArticleIDs: []int64{1, 2}}, {Title: "Topic 2", Summary: "Summary", WhyItMatters: "Impact", ArticleIDs: []int64{3}}}}
+	translated := translationservice.FeaturedBrief{Title: "Nổi bật", Intro: original.Intro, Takeaways: []string{"Một", "Hai", "Ba"}, Topics: []translationservice.FeaturedTopic{{Title: "Chủ đề", Summary: "Tóm tắt", WhyItMatters: "Tác động", ArticleIDs: []int64{1, 2}}, {Title: "Chủ đề 2", Summary: "Tóm tắt", WhyItMatters: "Tác động", ArticleIDs: []int64{3}}}}
 	if err := validateFeaturedTranslation(translated, original); err != nil {
 		t.Fatalf("valid translation rejected: %v", err)
 	}

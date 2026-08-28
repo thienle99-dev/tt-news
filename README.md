@@ -79,6 +79,7 @@ Mỗi bài có URL trực tiếp dạng `/news/:id-slug`, ví dụ `/news/156-a-
 | GET | `/health` | Trạng thái service/database |
 | GET | `/api/articles?category=technology&q=bitcoin&period=24h&sort=relevant&limit=20` | Feed; `period=24h|7d`, `sort=newest|oldest|relevant` |
 | GET | `/api/articles/:id` | Chi tiết bài |
+| GET | `/api/featured?lang=vi` | Daily Brief 24 giờ gần nhất: 3 ý chính, 3–5 sự kiện và bài nguồn |
 | POST | `/api/articles/:id/translations/vi` | Dịch và lấy cache tiếng Việt (Telegram auth) |
 | POST | `/api/articles/:id/ai-feedback` | Gửi phản hồi `{ issue_type: "incorrect"|"missing", reason }` về tóm tắt AI (Telegram auth) |
 | GET | `/api/categories` | Danh sách category |
@@ -182,4 +183,4 @@ Khi `AI_URL` và `AI_KEY` đã được cấu hình, tạo ngay một bản tin 
 docker compose run --rm --no-deps news-app /app/news featured-generate
 ```
 
-Lệnh sẽ ghi log nếu thiếu cấu hình AI, chưa đủ 5 bài đã tóm tắt, hoặc bản tin đã được tạo cho slot thời gian hiện tại.
+Lệnh sẽ ghi log nếu thiếu cấu hình AI, chưa đủ 3 bài đã tóm tắt, hoặc bản tin đã được tạo cho slot thời gian hiện tại.

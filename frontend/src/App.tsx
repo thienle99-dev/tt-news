@@ -12,7 +12,6 @@ import type {
   GoldRate,
   SavedOrganization,
   Source,
-  Translation,
 } from "./types";
 
 type Tab = "home" | "featured" | "saved" | "history" | "settings";
@@ -67,7 +66,7 @@ const text = {
     feedbackReason: "What is wrong or missing?",
     sendFeedback: "Send feedback",
     feedbackThanks: "Thanks — your feedback was recorded.",
-    originalContent: "Review original text",
+    originalContent: "Related original text",
     sortSaved: "Sort saved",
     time: "Time",
     allTime: "Any time",
@@ -89,10 +88,13 @@ const text = {
     filter: "Filter",
     newest: "Latest",
     all: "All",
-    featured: "FEATURED",
-    featuredNews: "Featured",
-    featuredUpdated: "Updated",
-    featuredUnavailable: "No featured briefing is available yet.",
+    featured: "TODAY",
+    featuredNews: "Today",
+    featuredUpdated: "Updated through",
+    featuredUnavailable: "Today's briefing is not available yet.",
+    featuredTakeaways: "3 things to know",
+    featuredWhyItMatters: "Why it matters",
+    featuredCoverage: "Last 24 hours",
     yourArticles: "Your articles",
     latest: "Latest",
     articles: "briefs",
@@ -151,7 +153,7 @@ const text = {
     feedbackReason: "Thông tin nào sai hoặc bị thiếu?",
     sendFeedback: "Gửi phản hồi",
     feedbackThanks: "Cảm ơn — phản hồi của bạn đã được ghi nhận.",
-    originalContent: "Xem nguyên văn liên quan",
+    originalContent: "NGUYÊN VĂN LIÊN QUAN",
     sortSaved: "Sắp xếp bài đã lưu",
     time: "Thời gian",
     allTime: "Mọi thời điểm",
@@ -173,10 +175,13 @@ const text = {
     filter: "Lọc",
     newest: "Mới nhất",
     all: "Tất cả",
-    featured: "NỔI BẬT",
-    featuredNews: "Nổi bật",
-    featuredUpdated: "Cập nhật",
-    featuredUnavailable: "Chưa có bản tin nổi bật.",
+    featured: "HÔM NAY",
+    featuredNews: "Hôm nay",
+    featuredUpdated: "Cập nhật đến",
+    featuredUnavailable: "Bản tin hôm nay chưa sẵn sàng.",
+    featuredTakeaways: "3 điều cần biết",
+    featuredWhyItMatters: "Vì sao đáng chú ý",
+    featuredCoverage: "24 giờ qua",
     yourArticles: "Bài tóm tắt đã lưu",
     latest: "Mới nhất",
     articles: "bản tóm tắt",
@@ -477,20 +482,9 @@ function SummaryContent({
     </p>
   );
 }
-function RSSDescription({
-  description,
-  locale,
-}: {
-  description: string;
-  locale: Locale;
-}) {
+function RSSDescription({ description }: { description: string }) {
   if (!description) return null;
-  return (
-    <section className="article-content">
-      <small>{locale === "vi" ? "MÔ TẢ" : "DESCRIPTION"}</small>
-      <FormattedDescription value={description} />
-    </section>
-  );
+  return <FormattedDescription value={description} />;
 }
 type DropdownOption = { value: string; label: string };
 function Dropdown({
@@ -819,9 +813,6 @@ function Detail({
   locale: Locale;
   back: () => void;
 }) {
-  const [translation, setTranslation] = useState<Translation | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [manualBrief, setManualBrief] = useState<Pick<
     Article,
     "title" | "summary"
@@ -834,24 +825,12 @@ function Detail({
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackFailed, setFeedbackFailed] = useState(false);
   const t = text[locale];
-  const translate = () => {
-    if (locale !== "vi") return;
-    setLoading(true);
-    setFailed(false);
-    api
-      .translateVietnamese(article.id)
-      .then(setTranslation)
-      .catch(() => setFailed(true))
-      .finally(() => setLoading(false));
-  };
   const resummarize = async () => {
     setResummarizing(true);
     setResummarizeFailed(false);
     try {
       const brief = await api.resummarize(article.id);
       setManualBrief(brief);
-      setTranslation(null);
-      setFailed(false);
     } catch {
       setResummarizeFailed(true);
     } finally {
@@ -859,8 +838,6 @@ function Detail({
     }
   };
   useEffect(() => {
-    setTranslation(null);
-    setFailed(false);
     setManualBrief(null);
     setResummarizeFailed(false);
     setIsRead(article.is_read);
@@ -868,15 +845,12 @@ function Detail({
     setFeedbackReason("");
     setFeedbackSent(false);
     setFeedbackFailed(false);
-    if (locale === "vi") translate();
-  }, [article.id, locale]);
+  }, [article.id]);
   useEffect(() => {
     void api.startReading(article.id);
   }, [article.id]);
-  const title = translation?.title || manualBrief?.title || article.title;
-  const summary =
-    translation?.summary || manualBrief?.summary || article.summary;
-  const originalDetail = article.description || article.summary;
+  const title = manualBrief?.title || article.title;
+  const summary = manualBrief?.summary || article.summary;
   const aiNotice =
     locale === "vi"
       ? "Đoạn tóm tắt này được tạo bởi AI và có thể chứa thông tin không chính xác."
@@ -921,20 +895,6 @@ function Detail({
       {article.image_url && (
         <img className="detail-image" src={article.image_url} alt="" />
       )}
-      {loading && (
-        <p className="translation-loading" role="status">
-          <span className="loading-spinner" aria-hidden="true" />
-          {t.translating}
-        </p>
-      )}
-      {failed && (
-        <p className="state error">
-          {t.translationError}{" "}
-          <button className="text-button" onClick={translate}>
-            {t.retry}
-          </button>
-        </p>
-      )}
       {
         <section className="summary-panel">
           <div className="summary-heading">
@@ -971,7 +931,12 @@ function Detail({
           {feedbackSent && <p className="ai-notice">{t.feedbackThanks}</p>}
         </section>
       }
-      <details className="article-content"><summary>{t.originalContent}</summary><RSSDescription description={article.original_content || article.description} locale={locale} /></details>
+      <section className="article-content original-content">
+        <small>{t.originalContent}</small>
+        <RSSDescription
+          description={article.original_content || article.description}
+        />
+      </section>
       {!isRead && (
         <button className="text-button" onClick={() => api.markRead(article.id).then(() => setIsRead(true)).catch(() => {})}>
           {t.markRead}
@@ -1392,11 +1357,19 @@ function Featured({
         <>
           <section className="featured-lead">
             <p className="section-kicker">
-              {t.featuredUpdated} · {publishedOn(brief.generated_at, locale)}
+              {t.featuredCoverage} · {t.featuredUpdated} {publishedOn(brief.generated_at, locale)}
             </p>
             <h2>{brief.title}</h2>
             <p>{brief.intro}</p>
           </section>
+          {brief.takeaways.length > 0 && (
+            <section className="featured-takeaways" aria-labelledby="featured-takeaways-title">
+              <p className="section-kicker" id="featured-takeaways-title">{t.featuredTakeaways}</p>
+              <ol>
+                {brief.takeaways.map((takeaway, index) => <li key={`${index}-${takeaway}`}>{takeaway}</li>)}
+              </ol>
+            </section>
+          )}
           <div className="featured-topics">
             {brief.topics.map((topic) => (
               <FeaturedTopic
@@ -1424,6 +1397,7 @@ function FeaturedTopic({
   toggle: (article: Article) => void;
   openDetail: (article: Article) => void;
 }) {
+  const t = text[locale];
   const [expanded, setExpanded] = useState(false);
   const visibleArticles = expanded
     ? topic.articles
@@ -1444,6 +1418,7 @@ function FeaturedTopic({
       </span>
       <h2>{topic.title}</h2>
       <p>{topic.summary}</p>
+      {topic.why_it_matters && <aside className="featured-why" aria-label={t.featuredWhyItMatters}><strong>{t.featuredWhyItMatters}</strong><span>{topic.why_it_matters}</span></aside>}
       <div className="featured-articles">
         {visibleArticles.map((article) => (
           <Card

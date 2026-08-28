@@ -39,7 +39,7 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
@@ -61,6 +61,8 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE articles ADD COLUMN full_content TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_reviewed_at TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN content_review_version TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE featured_topics ADD COLUMN why_it_matters TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE featured_topic_translations ADD COLUMN why_it_matters TEXT NOT NULL DEFAULT ''",
 	} {
 		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return err

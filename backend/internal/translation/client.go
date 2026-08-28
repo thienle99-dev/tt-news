@@ -37,15 +37,17 @@ type FeaturedCandidate struct {
 }
 
 type FeaturedTopic struct {
-	Title      string  `json:"title"`
-	Summary    string  `json:"summary"`
-	ArticleIDs []int64 `json:"article_ids"`
+	Title        string  `json:"title"`
+	Summary      string  `json:"summary"`
+	WhyItMatters string  `json:"why_it_matters"`
+	ArticleIDs   []int64 `json:"article_ids"`
 }
 
 type FeaturedBrief struct {
-	Title  string          `json:"title"`
-	Intro  string          `json:"intro"`
-	Topics []FeaturedTopic `json:"topics"`
+	Title     string          `json:"title"`
+	Intro     string          `json:"intro"`
+	Takeaways []string        `json:"takeaways"`
+	Topics    []FeaturedTopic `json:"topics"`
 }
 
 // NormalizeBaseURL accepts either an API host (https://api.example.com), an
@@ -176,12 +178,12 @@ func (c Client) Test(ctx context.Context) (string, error) {
 }
 
 func (c Client) Featured(ctx context.Context, candidates []FeaturedCandidate) (FeaturedBrief, error) {
-	instruction := `You are the editor of an international news briefing. Group the supplied articles into 5 to 8 distinct, important news events. Return only JSON with title, intro, and topics. Each topic needs title, summary, and article_ids. Summary must be concise and factual. Each topic must cite 1 to 3 supplied article IDs, never invent IDs, and no ID may appear in more than one topic. Prefer diverse sources.`
+	instruction := `You are the editor of a two-minute international daily briefing. Using only the supplied articles, select and group them into 3 to 5 distinct, important news events. Return only JSON with title, intro, takeaways, and topics. takeaways must contain exactly 3 short, self-contained factual bullets covering the most important developments; do not invent facts or imply certainty beyond the articles. Each topic needs title, summary, why_it_matters, and article_ids. summary states what happened in one or two concise factual sentences. why_it_matters gives one concise, source-grounded consequence or context; if no consequence is supported, state the immediate relevance without speculation. Each topic must cite 1 to 3 supplied article IDs, never invent IDs, and no ID may appear in more than one topic. Prefer diverse sources and topics.`
 	return c.featuredRequest(ctx, instruction, candidates)
 }
 
 func (c Client) FeaturedVietnamese(ctx context.Context, brief FeaturedBrief) (FeaturedBrief, error) {
-	instruction := `Translate this featured news briefing into natural Vietnamese. Preserve article_ids exactly. Return only JSON with title, intro, and topics; every topic must have title, summary, and article_ids. Do not add, remove, or reorder topics or IDs.`
+	instruction := `Translate this daily news briefing into natural Vietnamese. Preserve article_ids exactly. Return only JSON with title, intro, takeaways, and topics. Keep exactly 3 takeaways. Every topic must have title, summary, why_it_matters, and article_ids. Do not add, remove, or reorder takeaways, topics, or article IDs.`
 	return c.featuredRequest(ctx, instruction, brief)
 }
 
@@ -229,6 +231,14 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 		return FeaturedBrief{}, fmt.Errorf("decode featured briefing: %w", err)
 	}
 	brief.Title, brief.Intro = strings.TrimSpace(brief.Title), strings.TrimSpace(brief.Intro)
+	for index := range brief.Takeaways {
+		brief.Takeaways[index] = strings.TrimSpace(brief.Takeaways[index])
+	}
+	for index := range brief.Topics {
+		brief.Topics[index].Title = strings.TrimSpace(brief.Topics[index].Title)
+		brief.Topics[index].Summary = strings.TrimSpace(brief.Topics[index].Summary)
+		brief.Topics[index].WhyItMatters = strings.TrimSpace(brief.Topics[index].WhyItMatters)
+	}
 	return brief, nil
 }
 
