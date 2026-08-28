@@ -1097,6 +1097,10 @@ small {
 .job-status-skipped { background: color-mix(in srgb, var(--muted) 14%, var(--paper)); color: var(--muted); }
 .admin-job-list strong { display: block; font: 700 13px/1.3 Roboto, sans-serif; }
 .admin-job-list p { margin: 3px 0 0; color: var(--muted); font: 12px/1.35 Roboto, sans-serif; }
+.job-progress { height: 5px; margin-top: 9px; overflow: hidden; border-radius: 99px; background: color-mix(in srgb, var(--line) 72%, transparent); }
+.job-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 180ms ease; }
+.job-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; color: var(--muted); font: 700 10px/1.2 Roboto, sans-serif; }
+.job-detail { display: block; margin-top: 6px; color: var(--ink); font: 11px/1.35 Roboto, sans-serif; overflow-wrap: anywhere; }
 .admin-job-list time { color: var(--muted); font: 11px/1.35 Roboto, sans-serif; text-align: right; }
 .job-cancel { min-height: 32px; padding: 6px 10px; }
 .jobs-pagination { display: flex; align-items: center; justify-content: end; gap: 10px; margin-top: 14px; color: var(--muted); font: 12px/1.2 Roboto, sans-serif; }

@@ -2143,10 +2143,12 @@ function AdminPage() {
                           <span className={`job-status job-status-${job.status}`}>{job.status === "running" ? "Đang chạy" : job.status === "queued" ? "Đang chờ" : job.status === "completed" ? "Hoàn tất" : job.status === "skipped" ? "Đã bỏ qua" : "Thất bại"}</span>
                           <div>
                             <strong>{job.title}</strong>
-                            <p>{job.status === "running" ? (job.stage || "Đang chuẩn bị tác vụ") : (job.detail || job.stage || "Chưa có chi tiết")}{job.status === "running" && job.target_count > 0 ? ` · ${job.completed_count}/${job.target_count}` : ""}{job.status === "running" && job.failed_count > 0 ? ` · ${job.failed_count} lỗi` : ""}</p>
+                            <p>{job.status === "running" ? (job.stage || "Đang chuẩn bị tác vụ") : (job.detail || job.stage || "Chưa có chi tiết")}</p>
+                            {job.target_count > 0 && <><div className="job-progress" aria-label={`Tiến độ ${job.completed_count}/${job.target_count}`}><span style={{ width: `${Math.min(100, job.completed_count / job.target_count * 100)}%` }} /></div><div className="job-meta"><span>{job.completed_count}/{job.target_count} hoàn tất</span>{job.failed_count > 0 && <span>{job.failed_count} lỗi</span>}<span>{job.trigger === "scheduled" ? "Tự động" : "Thủ công"}</span></div></>}
+                            {job.detail && job.status === "running" && <small className="job-detail">{job.detail}</small>}
                           </div>
                           {job.status === "running" && <button type="button" className="secondary-button job-cancel" disabled={busy === `cancel-${job.id}`} onClick={() => void cancelJob(job.id)}>{busy === `cancel-${job.id}` ? "Đang hủy…" : "Hủy"}</button>}
-                          {job.started_at && <time dateTime={job.started_at}>{formatAdminTime(job.finished_at || job.started_at)}</time>}
+                          {job.started_at && <time dateTime={job.started_at}>Bắt đầu {formatAdminTime(job.started_at)}{job.finished_at && <> · Xong {formatAdminTime(job.finished_at)}</>}</time>}
                         </li>
                       ))}
                     </ul>

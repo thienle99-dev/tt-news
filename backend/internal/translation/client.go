@@ -213,7 +213,7 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	if client == nil {
 		// A daily brief includes many source articles, so it can take noticeably
 		// longer than a single-article summary on slower compatible providers.
-		client = &http.Client{Timeout: 2 * time.Minute}
+		client = &http.Client{Timeout: 5 * time.Minute}
 	}
 	res, err := client.Do(req)
 	if err != nil {
