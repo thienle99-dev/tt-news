@@ -118,6 +118,7 @@ func migrate(db *sql.DB) error {
 		{Name: "Krebs on Security", URL: "https://krebsonsecurity.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "Discord Blog", URL: "https://discord.com/blog/rss.xml", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "Latent Space", URL: "https://www.latent.space/feed", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Goon's Solo Playbook", URL: "https://goonnguyen.substack.com/feed", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
 		{Name: "Product Hunt", URL: "https://www.producthunt.com/feed", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		// {Name: "Al Jazeera English", URL: "https://www.aljazeera.com/xml/rss/all.xml", Category: "world", CountryCode: "QA", CountryName: "Qatar"},
 		// {Name: "The Guardian World", URL: "https://www.theguardian.com/world/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},

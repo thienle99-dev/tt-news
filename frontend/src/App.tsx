@@ -1705,6 +1705,8 @@ function AdminPage() {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [testReply, setTestReply] = useState("");
+  const [testError, setTestError] = useState("");
   const load = async () => {
     setBusy("load");
     try {
@@ -1747,11 +1749,11 @@ function AdminPage() {
     finally { setBusy(""); }
   };
   const testModel = async () => {
-    setBusy("test"); setError(""); setMessage("");
+    setBusy("test"); setError(""); setMessage(""); setTestReply(""); setTestError("");
     try {
       const result = await api.adminAITest(token, aiForm);
-      setMessage(`Model hoạt động. Phản hồi: ${result.reply || "OK"}`);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Model không hoạt động."); }
+      setTestReply(result.reply || "OK");
+    } catch (caught) { setTestError(caught instanceof Error ? caught.message : "Model không hoạt động."); }
     finally { setBusy(""); }
   };
   const saveAI = async () => {
@@ -1828,6 +1830,18 @@ function AdminPage() {
                     <button type="submit" className="primary" disabled={busy !== "" || !aiForm.base_url || !aiForm.model}>{busy === "save" ? "Đang lưu…" : "Lưu cấu hình"}</button>
                     <button type="button" className="text-button" disabled={busy !== "" || configSource === "env"} onClick={() => void resetAI()}>Khôi phục ENV</button>
                   </div>
+                  {testReply && (
+                    <section className="ai-test-result success" role="status" aria-live="polite">
+                      <strong>Model hoạt động</strong>
+                      <pre>{testReply}</pre>
+                    </section>
+                  )}
+                  {testError && (
+                    <section className="ai-test-result error" role="alert">
+                      <strong>Không thể test model</strong>
+                      <p>{testError}</p>
+                    </section>
+                  )}
                 </form>
               </section>
               <section className="settings-card operations-card" aria-labelledby="operations-title">
