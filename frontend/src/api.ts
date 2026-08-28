@@ -1,4 +1,4 @@
-import type { AIConfig, AIConfigInput, AIModel, Article, Category, Country, FeaturedBrief, GoldRate, SavedCollection, SavedOrganization, Source, TelegramUser, Translation } from './types'
+import type { AIConfig, AIConfigInput, AIModel, Article, Category, Country, FeaturedBrief, GoldRate, MediumReaderArticle, SavedCollection, SavedOrganization, Source, TelegramUser, Translation } from './types'
 
 const initData = window.Telegram?.WebApp?.initData ?? ''
 const headers = (): HeadersInit => initData ? { Authorization: `tma ${initData}` } : {}
@@ -18,6 +18,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+	readMedium: (url: string) => request<MediumReaderArticle>('/api/reader/articles', { method: 'POST', body: JSON.stringify({ url }), headers: { 'Content-Type': 'application/json' } }),
   articles: (params: URLSearchParams) => request<Article[]>(`/api/articles?${params}`),
   article: (id: number) => request<Article>(`/api/articles/${id}`),
 	translateVietnamese: (id: number) => request<Translation>(`/api/articles/${id}/translations/vi`, { method: 'POST' }),

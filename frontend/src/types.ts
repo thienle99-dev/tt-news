@@ -16,3 +16,8 @@ export type SavedOrganization = { folders: SavedCollection[]; tags: SavedCollect
 export type AIModel = { id: string; owned_by?: string }
 export type AIConfig = { base_url: string; model: string; api_key_configured: boolean; source: 'env' | 'saved' }
 export type AIConfigInput = { base_url: string; api_key: string; model: string }
+export type MediumReaderArticle = {
+  requested_url: string; canonical_url: string; resolved_url: string; title: string; subtitle?: string; author?: string
+  published_at?: string; reading_time_minutes?: number; access: 'public' | 'author_free_link' | 'preview'; warning?: string
+  content_html: string; cached_at: string
+}

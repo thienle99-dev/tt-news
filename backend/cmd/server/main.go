@@ -199,6 +199,7 @@ func (s *server) routes() http.Handler {
 		r.Get("/gold-rates", s.goldRatesHandler)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
+			r.Post("/reader/articles", s.mediumReader)
 			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
 			r.Post("/articles/{id}/resummarize", s.resummarizeArticle)
 			r.Post("/articles/{id}/ai-feedback", s.submitAIFeedback)

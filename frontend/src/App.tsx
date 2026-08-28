@@ -10,6 +10,7 @@ import type {
   Country,
   FeaturedBrief,
   GoldRate,
+  MediumReaderArticle,
   SavedOrganization,
   Source,
 } from "./types";
@@ -138,6 +139,16 @@ const text = {
     goldUnavailable: "Gold prices are temporarily unavailable.",
     goldViewSource: "View source table",
     goldDisclaimer: "Reference prices from Bảo Tín Mạnh Hải. Confirm before trading.",
+    mediumReader: "Medium Reader",
+    mediumReaderHint: "Paste a Medium link to read the public version here.",
+    mediumURL: "Medium article URL",
+    mediumOpen: "Open article",
+    mediumLoading: "Fetching public article content…",
+    mediumPublic: "Public article",
+    mediumFree: "Author-provided free link",
+    mediumPreview: "Public preview only",
+    mediumPreviewWarning: "Medium did not provide the complete public article. Open the original to continue.",
+    mediumOriginal: "Open original on Medium",
   },
   vi: {
     masthead: "SIGNAL BRIEF",
@@ -224,6 +235,16 @@ const text = {
     goldUnavailable: "Tạm thời không tải được giá vàng.",
     goldViewSource: "Xem bảng giá gốc",
     goldDisclaimer: "Giá tham khảo từ Bảo Tín Mạnh Hải. Hãy xác nhận trước khi giao dịch.",
+    mediumReader: "Đọc Medium",
+    mediumReaderHint: "Dán link Medium để đọc phiên bản công khai tại đây.",
+    mediumURL: "Link bài viết Medium",
+    mediumOpen: "Mở bài viết",
+    mediumLoading: "Đang tải nội dung công khai…",
+    mediumPublic: "Bài viết công khai",
+    mediumFree: "Liên kết miễn phí từ tác giả",
+    mediumPreview: "Chỉ có bản xem trước công khai",
+    mediumPreviewWarning: "Medium không trả toàn bộ nội dung công khai. Mở bài gốc để tiếp tục.",
+    mediumOriginal: "Mở bài gốc trên Medium",
   },
 } as const;
 const category = (slug: string, locale: Locale) =>
@@ -1447,9 +1468,11 @@ function FeaturedTopic({
 function Settings({
   locale,
   setLocale,
+  openReader,
 }: {
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  openReader: () => void;
 }) {
   const t = text[locale];
   return (
@@ -1463,8 +1486,54 @@ function Settings({
         <small>{t.interface}</small>
         <p>{t.theme}</p>
       </div>
+      <div className="settings-card reader-settings-card">
+        <small>TOOLS</small>
+        <h2>{t.mediumReader}</h2>
+        <p>{t.mediumReaderHint}</p>
+        <button className="text-button" onClick={openReader}>{t.mediumOpen}</button>
+      </div>
     </section>
   );
+}
+function MediumReader({ locale, back }: { locale: Locale; back: () => void }) {
+  const t = text[locale];
+  const [url, setURL] = useState("");
+  const [article, setArticle] = useState<MediumReaderArticle | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!url.trim()) return;
+    setLoading(true); setError(""); setArticle(null);
+    try { setArticle(await api.readMedium(url.trim())); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : t.loadError); }
+    finally { setLoading(false); }
+  };
+  const accessLabel = article?.access === "author_free_link" ? t.mediumFree : article?.access === "preview" ? t.mediumPreview : t.mediumPublic;
+  return <section className="page reader-page">
+    <button className="back-button" onClick={back}><Icon name="arrow-left" />{t.back}</button>
+    <p className="section-kicker">TOOLS</p>
+    <h1>{t.mediumReader}</h1>
+    <p className="reader-intro">{t.mediumReaderHint}</p>
+    <form className="reader-form" onSubmit={(event) => void submit(event)} aria-busy={loading}>
+      <label htmlFor="medium-url">{t.mediumURL}</label>
+      <div className="reader-form-row">
+        <input id="medium-url" type="url" inputMode="url" autoComplete="url" placeholder="https://medium.com/@author/story" value={url} onChange={(event) => setURL(event.target.value)} required aria-describedby="medium-help medium-error" />
+        <button className="primary" disabled={loading || !url.trim()}>{loading ? t.mediumLoading : t.mediumOpen}</button>
+      </div>
+      <p id="medium-help" className="reader-help">medium.com hoặc một subdomain Medium; chỉ nội dung công khai.</p>
+      {error && <p id="medium-error" className="reader-error" role="alert">{error}</p>}
+    </form>
+    {article && <article className="reader-article">
+      <div className={`reader-access reader-access-${article.access}`} role={article.access === "preview" ? "alert" : "status"}>{accessLabel}</div>
+      <h2>{article.title}</h2>
+      {article.subtitle && <p className="reader-subtitle">{article.subtitle}</p>}
+      {(article.author || article.published_at || article.reading_time_minutes) && <p className="reader-meta">{[article.author, article.published_at && publishedOn(article.published_at, locale), article.reading_time_minutes && `${article.reading_time_minutes} min`].filter(Boolean).join(" · ")}</p>}
+      {(article.warning || article.access === "preview") && <p className="reader-warning">{article.warning || t.mediumPreviewWarning}</p>}
+      <div className="reader-content" dangerouslySetInnerHTML={{ __html: article.content_html }} />
+      <button className="primary reader-original" onClick={() => open(article.resolved_url || article.canonical_url)}>{t.mediumOriginal}<Icon name="arrow-up-right" /></button>
+    </article>}
+  </section>;
 }
 const BottomNavigation = memo(function BottomNavigation({
   tab,
@@ -1890,6 +1959,7 @@ export default function App() {
     window.Telegram?.WebApp?.colorScheme ??
     (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
   );
+  const [route, setRoute] = useState(() => window.location.pathname);
   const [tab, setTab] = useState<Tab>("home");
   const [article, setArticle] = useState<Article | null>(null);
   const [articleID, setArticleID] = useState<number | null>(articleIDFromPath);
@@ -1927,7 +1997,7 @@ export default function App() {
     document.documentElement.dataset.telegramTheme = theme;
   }, [theme]);
   useEffect(() => {
-    const onPopState = () => setArticleID(articleIDFromPath());
+    const onPopState = () => { setArticleID(articleIDFromPath()); setRoute(window.location.pathname); };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -1967,7 +2037,17 @@ export default function App() {
     }
     requestAnimationFrame(() => window.scrollTo(0, listingScroll.current));
   };
+  const openReader = () => {
+    window.history.pushState({}, "", "/reader");
+    setRoute("/reader");
+    window.scrollTo(0, 0);
+  };
+  const backFromReader = () => {
+    if (window.history.state !== null) window.history.back();
+    else { window.history.replaceState({}, "", "/"); setRoute("/"); }
+  };
   const showingDetail = articleID !== null;
+  const showingReader = route === "/reader";
   return (
     <main>
       <a className="skip-link" href="#main-content">
@@ -1975,8 +2055,8 @@ export default function App() {
       </a>
       <div className="app-shell" id="main-content" tabIndex={-1}>
         <div
-          className={showingDetail ? "listing-page hidden" : "listing-page"}
-          aria-hidden={showingDetail}
+          className={showingDetail || showingReader ? "listing-page hidden" : "listing-page"}
+          aria-hidden={showingDetail || showingReader}
         >
           {tab === "home" && (
             <Home
@@ -2015,7 +2095,7 @@ export default function App() {
             />
           )}
           {tab === "settings" && (
-            <Settings locale={locale} setLocale={setLocale} />
+            <Settings locale={locale} setLocale={setLocale} openReader={openReader} />
           )}
         </div>
         {showingDetail &&
@@ -2039,8 +2119,9 @@ export default function App() {
               {t.loading}
             </p>
           ))}
+        {showingReader && <MediumReader locale={locale} back={backFromReader} />}
       </div>
-      {!showingDetail && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
+      {!showingDetail && !showingReader && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
     </main>
   );
 }
