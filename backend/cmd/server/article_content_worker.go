@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"telegram-news/internal/articletext"
 )
 
-const minimumArticleContentLength = 300
+const (
+	minimumArticleContentLength    = 300
+	articleContentExtractorVersion = "2026-08-28.2"
+)
 
 type articleContentTask struct {
 	ID  int64
@@ -28,12 +33,11 @@ type articleContentResult struct {
 // completed. Keeping it separate means a slow or blocked publisher page never
 // delays the RSS feed itself.
 func (s *server) fetchMissingArticleContent(ctx context.Context) {
-	retryBefore := time.Now().UTC().Add(-6 * time.Hour).Format(time.RFC3339)
 	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.url FROM articles a
 		LEFT JOIN article_content_fetches f ON f.article_id=a.id
 		WHERE length(trim(a.full_content))<? AND a.url<>''
-		AND (f.attempted_at IS NULL OR f.attempted_at<?)
-		ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, minimumArticleContentLength, retryBefore, s.cfg.RSSContentFetchLimit)
+		AND f.article_id IS NULL
+		ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, minimumArticleContentLength, s.cfg.RSSContentFetchLimit)
 	if err != nil {
 		log.Printf("article content worker: load queue: %v", err)
 		return
@@ -75,12 +79,40 @@ func (s *server) fetchMissingArticleContent(ctx context.Context) {
 	output := make(chan articleContentResult, len(tasks))
 	var group sync.WaitGroup
 	client := articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}
+	var hostMu sync.Mutex
+	hostSlots := map[string]chan struct{}{}
+	acquireHost := func(ctx context.Context, rawURL string) (func(), error) {
+		parsed, parseErr := url.Parse(rawURL)
+		if parseErr != nil || parsed.Hostname() == "" {
+			return func() {}, nil
+		}
+		host := strings.ToLower(parsed.Hostname())
+		hostMu.Lock()
+		slots := hostSlots[host]
+		if slots == nil {
+			slots = make(chan struct{}, 2)
+			hostSlots[host] = slots
+		}
+		hostMu.Unlock()
+		select {
+		case slots <- struct{}{}:
+			return func() { <-slots }, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	for range workers {
 		group.Add(1)
 		go func() {
 			defer group.Done()
 			for task := range input {
+				release, waitErr := acquireHost(jobCtx, task.URL)
+				if waitErr != nil {
+					output <- articleContentResult{articleContentTask: task, err: waitErr}
+					continue
+				}
 				content, fetchErr := client.FetchContent(jobCtx, task.URL)
+				release()
 				if fetchErr == nil && len(content.Text) < minimumArticleContentLength {
 					fetchErr = fmt.Errorf("extracted content is too short (%d characters)", len(content.Text))
 				}
@@ -143,6 +175,6 @@ func (s *server) saveArticleContent(ctx context.Context, result articleContentRe
 }
 
 func (s *server) recordArticleContentFetch(ctx context.Context, articleID int64, detail string) {
-	_, _ = s.db.ExecContext(ctx, `INSERT INTO article_content_fetches(article_id,attempts,attempted_at,last_error)
-		VALUES(?,1,?,?) ON CONFLICT(article_id) DO UPDATE SET attempts=article_content_fetches.attempts+1,attempted_at=excluded.attempted_at,last_error=excluded.last_error`, articleID, time.Now().UTC().Format(time.RFC3339), detail)
+	_, _ = s.db.ExecContext(ctx, `INSERT INTO article_content_fetches(article_id,attempts,attempted_at,last_error,extractor_version)
+		VALUES(?,1,?,?,?) ON CONFLICT(article_id) DO UPDATE SET attempts=article_content_fetches.attempts+1,attempted_at=excluded.attempted_at,last_error=excluded.last_error,extractor_version=excluded.extractor_version`, articleID, time.Now().UTC().Format(time.RFC3339), detail, articleContentExtractorVersion)
 }

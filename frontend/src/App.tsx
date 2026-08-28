@@ -2124,16 +2124,23 @@ function AdminPage() {
                     <div className="model-row">
                       <label className="admin-field">
                         <span>MODEL</span>
-                        <select value={aiForm.model} onChange={event => setAIForm(current => ({ ...current, model: event.target.value }))} aria-describedby="ai-model-help">
-                          <option value="" disabled>Bấm “Lấy models” để tải danh sách</option>
-                          {aiForm.model && !models.some(model => model.id === aiForm.model) && <option value={aiForm.model}>{aiForm.model} (hiện tại)</option>}
-                          {models.map(model => <option value={model.id} key={model.id}>{model.id}{model.owned_by ? ` · ${model.owned_by}` : ""}</option>)}
-                        </select>
+                        <input
+                          type="search"
+                          list="ai-model-options"
+                          value={aiForm.model}
+                          onChange={event => setAIForm(current => ({ ...current, model: event.target.value }))}
+                          placeholder={models.length ? "Tìm hoặc nhập tên model" : "Bấm “Lấy models” để tải danh sách"}
+                          aria-describedby="ai-model-help"
+                          autoComplete="off"
+                        />
+                        <datalist id="ai-model-options">
+                          {models.map(model => <option value={model.id} key={model.id}>{model.owned_by ? `${model.id} · ${model.owned_by}` : model.id}</option>)}
+                        </datalist>
                       </label>
                       <button type="button" className="secondary-button" disabled={busy !== "" || !aiForm.base_url} onClick={() => void loadModels()}>{busy === "models" ? "Đang lấy…" : "Lấy models"}</button>
                     </div>
                   </div>
-                  <p className="admin-hint" id="ai-model-help">{models.length > 0 ? `Đã tìm thấy ${models.length} model. Chọn một model rồi kiểm tra kết nối trước khi lưu.` : "Danh sách model được lấy trực tiếp từ endpoint /v1/models của provider."}</p>
+                  <p className="admin-hint" id="ai-model-help">{models.length > 0 ? `Đã tìm thấy ${models.length} model. Gõ để tìm, hoặc nhập tên model thủ công rồi kiểm tra kết nối trước khi lưu.` : "Danh sách model được lấy trực tiếp từ endpoint /v1/models của provider."}</p>
                   <div className="admin-actions">
                     <button type="button" className="secondary-button" disabled={busy !== "" || !aiForm.model} onClick={() => void testModel()}>{busy === "test" ? "Đang kiểm tra…" : "Test model"}</button>
                     <button type="submit" className="primary" disabled={busy !== "" || !aiForm.base_url || !aiForm.model}>{busy === "save" ? "Đang lưu…" : "Lưu cấu hình"}</button>
@@ -2225,8 +2232,8 @@ function AdminPage() {
                   {status.jobs_total > status.jobs_page_size && <div className="jobs-pagination"><button type="button" className="secondary-button" disabled={status.jobs_page <= 1} onClick={() => { const page = status.jobs_page - 1; setJobsPage(page); void load(page); }}>Trước</button><span>Trang {status.jobs_page}/{Math.ceil(status.jobs_total / status.jobs_page_size)}</span><button type="button" className="secondary-button" disabled={status.jobs_page >= Math.ceil(status.jobs_total / status.jobs_page_size)} onClick={() => { const page = status.jobs_page + 1; setJobsPage(page); void load(page); }}>Sau</button></div>}
               </section>
               <section className="settings-card usage-card" aria-labelledby="usage-title">
-                <small>AI USAGE</small><h2 id="usage-title">Token theo ngày</h2>
-                {status.ai_usage.length ? (() => { const max = Math.max(...status.ai_usage.map(item => item.total_tokens)); return <div className="usage-chart" aria-label="Biểu đồ token AI theo ngày">{status.ai_usage.map(item => <div className="usage-bar" key={item.day}><span style={{ height: `${Math.max(8, item.total_tokens / max * 100)}%` }} /><strong>{item.total_tokens.toLocaleString()}</strong><small>{item.day.slice(5)}</small></div>)}</div>; })() : <p className="admin-jobs-empty">Chưa có dữ liệu token. Dữ liệu được ghi nhận từ yêu cầu AI tiếp theo.</p>}
+                <small>AI USAGE</small><h2 id="usage-title">Token theo ngày</h2><p className="usage-period">7 ngày gần nhất</p>
+                {status.ai_usage.length ? (() => { const max = Math.max(1, ...status.ai_usage.map(item => item.total_tokens)); return <div className="usage-chart" role="img" aria-label="Biểu đồ token AI trong 7 ngày gần nhất">{status.ai_usage.map(item => <div className="usage-bar" key={item.day} aria-label={`${item.day}: ${item.total_tokens.toLocaleString()} token`}><span style={{ height: `${item.total_tokens === 0 ? 0 : Math.max(8, item.total_tokens / max * 100)}%` }} /><strong>{item.total_tokens.toLocaleString()}</strong><small>{item.day.slice(5)}</small></div>)}</div>; })() : <p className="admin-jobs-empty">Chưa có dữ liệu token. Dữ liệu được ghi nhận từ yêu cầu AI tiếp theo.</p>}
               </section>
               <AdminSources sources={status.sources} token={token} action={action} />
             </div>

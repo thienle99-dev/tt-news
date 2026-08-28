@@ -13,7 +13,10 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-const defaultMaxBytes int64 = 2 << 20
+// Some publishers include substantial hydration data in otherwise public
+// pages. Four MiB keeps those articles available without accepting unbounded
+// responses.
+const defaultMaxBytes int64 = 4 << 20
 
 type Client struct {
 	HTTPClient *http.Client

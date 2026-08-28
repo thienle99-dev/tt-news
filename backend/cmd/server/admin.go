@@ -141,16 +141,26 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 	if counts["translation_queue"] > 0 {
 		jobs = append(jobs, jobStatus{Kind: "translation", Title: "Dịch bài tiếng Việt", Status: "queued", Detail: fmt.Sprintf("%d bài đang chờ xử lý", counts["translation_queue"]), TargetCount: int(counts["translation_queue"])})
 	}
-	usage := []map[string]any{}
-	if usageRows, usageErr := s.db.QueryContext(r.Context(), `SELECT day,SUM(prompt_tokens),SUM(completion_tokens),SUM(total_tokens),SUM(requests) FROM ai_usage_daily WHERE day>=? GROUP BY day ORDER BY day`, time.Now().UTC().AddDate(0, 0, -13).Format("2006-01-02")); usageErr == nil {
+	usageByDay := map[string]map[string]any{}
+	usageStart := time.Now().UTC().AddDate(0, 0, -6)
+	if usageRows, usageErr := s.db.QueryContext(r.Context(), `SELECT day,SUM(prompt_tokens),SUM(completion_tokens),SUM(total_tokens),SUM(requests) FROM ai_usage_daily WHERE day>=? GROUP BY day ORDER BY day`, usageStart.Format("2006-01-02")); usageErr == nil {
 		for usageRows.Next() {
 			var day string
 			var prompt, completion, total, requests int64
 			if usageRows.Scan(&day, &prompt, &completion, &total, &requests) == nil {
-				usage = append(usage, map[string]any{"day": day, "prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total, "requests": requests})
+				usageByDay[day] = map[string]any{"day": day, "prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total, "requests": requests}
 			}
 		}
 		usageRows.Close()
+	}
+	usage := make([]map[string]any, 0, 7)
+	for offset := 0; offset < 7; offset++ {
+		day := usageStart.AddDate(0, 0, offset).Format("2006-01-02")
+		if item, ok := usageByDay[day]; ok {
+			usage = append(usage, item)
+		} else {
+			usage = append(usage, map[string]any{"day": day, "prompt_tokens": int64(0), "completion_tokens": int64(0), "total_tokens": int64(0), "requests": int64(0)})
+		}
 	}
 	jsonOut(w, 200, map[string]any{
 		"sources":           sources,

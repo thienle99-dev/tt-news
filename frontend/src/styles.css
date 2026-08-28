@@ -1172,6 +1172,7 @@ small {
 .jobs-pagination { display: flex; align-items: center; justify-content: end; gap: 10px; margin-top: 14px; color: var(--muted); font: 12px/1.2 Roboto, sans-serif; }
 .admin-jobs-empty { margin: 14px 0 0; color: var(--muted); font: 13px/1.45 Roboto, sans-serif; }
 .usage-card h2 { margin: 7px 0 0; font: 600 1.5rem/1.1 Newsreader, Georgia, serif; }
+.usage-card .usage-period { margin: 6px 0 0; color: var(--muted); font: 12px/1.3 Roboto, sans-serif; }
 .usage-chart { display: flex; align-items: end; gap: 8px; height: 180px; margin-top: 20px; border-bottom: 1px solid var(--line); }
 .usage-bar { display: grid; flex: 1; min-width: 0; height: 100%; grid-template-rows: 1fr auto auto; align-items: end; gap: 5px; }
 .usage-bar span { display: block; width: 100%; min-height: 4px; border-radius: 6px 6px 0 0; background: var(--accent); }

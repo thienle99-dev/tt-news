@@ -27,6 +27,7 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 		return Content{}, err
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,vi;q=0.8")
 	if c.UserAgent != "" {
 		req.Header.Set("User-Agent", c.UserAgent)
 	}
@@ -39,8 +40,8 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 		return Content{}, err
 	}
 	defer res.Body.Close()
-	if res.StatusCode == http.StatusForbidden && is9to5Google(req.URL) {
-		return c.fetch9to5GooglePost(ctx, req.URL)
+	if res.StatusCode == http.StatusForbidden && is9to5(req.URL) {
+		return c.fetch9to5Post(ctx, req.URL)
 	}
 	if res.StatusCode == http.StatusForbidden && isGizmochina(req.URL) {
 		return c.fetchGizmochinaReader(ctx, req.URL)
@@ -75,12 +76,23 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 	if len(images) == 0 {
 		images = metadataImages(doc, base)
 	}
-	return Content{Text: selectionText(root), Images: images}, nil
+	content := Content{Text: selectionText(root), Images: images}
+	// 9to5 sites often return an HTML shell to automated clients while their
+	// public WordPress endpoint still exposes the article body. Prefer its
+	// longer body even when the initial HTML request technically succeeded.
+	if len(content.Text) < 300 && is9to5(req.URL) {
+		if fallback, fallbackErr := c.fetch9to5Post(ctx, req.URL); fallbackErr == nil && len(fallback.Text) > len(content.Text) {
+			return fallback, nil
+		}
+	}
+	return content, nil
 }
 
-func is9to5Google(pageURL *url.URL) bool {
+func is9to5(pageURL *url.URL) bool {
 	host := strings.ToLower(pageURL.Hostname())
-	return host == "9to5google.com" || host == "www.9to5google.com"
+	return host == "9to5google.com" || host == "www.9to5google.com" ||
+		host == "9to5mac.com" || host == "www.9to5mac.com" ||
+		host == "9to5toys.com" || host == "www.9to5toys.com"
 }
 
 func isGizmochina(pageURL *url.URL) bool {
@@ -138,7 +150,7 @@ func (c Client) fetchGizmochinaReader(ctx context.Context, pageURL *url.URL) (Co
 	return Content{Text: text, Images: markdownImages(text, pageURL)}, nil
 }
 
-func (c Client) fetch9to5GooglePost(ctx context.Context, pageURL *url.URL) (Content, error) {
+func (c Client) fetch9to5Post(ctx context.Context, pageURL *url.URL) (Content, error) {
 	slug := path.Base(strings.Trim(pageURL.Path, "/"))
 	if slug == "" || slug == "." || slug == "/" {
 		return Content{}, errors.New("9to5google article slug is missing")
