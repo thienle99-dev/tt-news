@@ -137,6 +137,8 @@ const text = {
     articleContent: "ARTICLE",
     source: "Source",
     summaryEmpty: "No summary yet. Use the sparkle button to generate one.",
+    autoSummary: "Automatic summaries",
+    autoSummaryHint: "Generate an AI summary when opening an article that does not have one yet.",
     goldPrices: "Gold prices",
     goldLive: "LIVE REFERENCE",
     goldBuy: "Buy",
@@ -239,6 +241,8 @@ const text = {
     articleContent: "NỘI DUNG BÀI VIẾT",
     source: "Nguồn",
     summaryEmpty: "Chưa có bản tóm tắt. Nhấn nút ở góc phải để AI tạo tóm tắt.",
+    autoSummary: "Tự động tóm tắt",
+    autoSummaryHint: "Tạo tóm tắt bằng AI khi mở bài viết chưa có bản tóm tắt.",
     goldPrices: "Giá vàng",
     goldLive: "THAM KHẢO TRỰC TIẾP",
     goldBuy: "Mua",
@@ -920,10 +924,12 @@ function Detail({
   article,
   locale,
   back,
+  autoSummarize,
 }: {
   article: Article;
   locale: Locale;
   back: () => void;
+  autoSummarize: boolean;
 }) {
   const [manualBrief, setManualBrief] = useState<Pick<
     Article,
@@ -937,6 +943,7 @@ function Detail({
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackFailed, setFeedbackFailed] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
+  const autoSummaryRequested = useRef<number | null>(null);
   const t = text[locale];
   const resummarize = async () => {
     setResummarizing(true);
@@ -960,6 +967,11 @@ function Detail({
     setFeedbackFailed(false);
     setReadingMode(false);
   }, [article.id]);
+  useEffect(() => {
+    if (!autoSummarize || article.summary.trim() || autoSummaryRequested.current === article.id) return;
+    autoSummaryRequested.current = article.id;
+    void resummarize();
+  }, [article.id, article.summary, autoSummarize]);
   useEffect(() => {
     void api.startReading(article.id);
   }, [article.id]);
@@ -1586,10 +1598,14 @@ function Settings({
   locale,
   setLocale,
   openReader,
+  autoSummarize,
+  setAutoSummarize,
 }: {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   openReader: () => void;
+  autoSummarize: boolean;
+  setAutoSummarize: (enabled: boolean) => void;
 }) {
   const t = text[locale];
   return (
@@ -1602,6 +1618,22 @@ function Settings({
       <div className="settings-card">
         <small>{t.interface}</small>
         <p>{t.theme}</p>
+      </div>
+      <div className="settings-card auto-summary-settings-card">
+        <div>
+          <small>AI</small>
+          <h2>{t.autoSummary}</h2>
+          <p>{t.autoSummaryHint}</p>
+        </div>
+        <label className="settings-switch">
+          <span className="sr-only">{t.autoSummary}</span>
+          <input
+            type="checkbox"
+            checked={autoSummarize}
+            onChange={(event) => setAutoSummarize(event.target.checked)}
+          />
+          <span aria-hidden="true" />
+        </label>
       </div>
       <div className="settings-card reader-settings-card">
         <small>TOOLS</small>
@@ -2217,6 +2249,9 @@ export default function App() {
     const saved = localStorage.getItem("theme");
     return saved === "light" || saved === "dark" ? saved : null;
   });
+  const [autoSummarize, setAutoSummarizeState] = useState(
+    () => localStorage.getItem("auto-summarize-on-open") === "true",
+  );
   const [automaticTheme, setAutomaticTheme] = useState<Theme>(() =>
     window.Telegram?.WebApp?.colorScheme ??
     (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
@@ -2231,6 +2266,10 @@ export default function App() {
   const setLocale = useCallback((next: Locale) => {
     localStorage.setItem("locale", next);
     setLocaleState(next);
+  }, []);
+  const setAutoSummarize = useCallback((enabled: boolean) => {
+    localStorage.setItem("auto-summarize-on-open", String(enabled));
+    setAutoSummarizeState(enabled);
   }, []);
   const t = text[locale];
   const theme = themeOverride ?? automaticTheme;
@@ -2357,12 +2396,12 @@ export default function App() {
             />
           )}
           {tab === "settings" && (
-            <Settings locale={locale} setLocale={setLocale} openReader={openReader} />
+            <Settings locale={locale} setLocale={setLocale} openReader={openReader} autoSummarize={autoSummarize} setAutoSummarize={setAutoSummarize} />
           )}
         </div>
         {showingDetail &&
           (article ? (
-            <Detail article={article} locale={locale} back={back} />
+            <Detail article={article} locale={locale} back={back} autoSummarize={autoSummarize} />
           ) : detailError ? (
             <section className="state error">
               <p>{t.detailError}</p>

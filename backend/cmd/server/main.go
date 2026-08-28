@@ -1173,6 +1173,7 @@ func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, so
 	crawlStarted := time.Now()
 	defer func() {
 		s.finishJob(context.Background(), job, "completed", fmt.Sprintf("%d/%d nguồn · %d bài mới · %d đã có · %d ngoài thời gian · %d không hợp lệ · %d lỗi · %s", processed-int(failed), len(sources), total.Inserted, total.Existing, total.BeforeSince, total.Invalid, failed, time.Since(crawlStarted).Round(time.Second)), int64(processed), failed)
+		go s.fetchMissingArticleContent(ctx)
 	}()
 	workers := min(s.cfg.RSSFetchWorkers, len(sources))
 	type outcome struct {
@@ -1297,7 +1298,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			result.BeforeSince++
 			continue
 		}
-		log.Printf("rss %s article [%d/%d] processing: %s", src.Name, index+1, len(feed.Items), link)
+		log.Printf("rss %s article [%d/%d] saving feed item: %s", src.Name, index+1, len(feed.Items), link)
 		image := ""
 		if item.Image != nil {
 			image = item.Image.URL
@@ -1311,20 +1312,6 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		body := fullContent
 		if body == "" {
 			body = description
-		}
-		if extracted, fetchErr := (articletext.Client{UserAgent: s.cfg.RSSContentUserAgent}).FetchContent(ctx, link); fetchErr != nil {
-			log.Printf("rss article %s: %v", link, fetchErr)
-		} else {
-			if len(extracted.Text) >= 300 {
-				body = extracted.Text
-				fullContent = extracted.Text
-			} else if extracted.Text != "" {
-				log.Printf("rss article %s: extracted text too short; using RSS description", link)
-			}
-			contentImages = extracted.Images
-			if image == "" && len(contentImages) > 0 {
-				image = contentImages[0]
-			}
 		}
 		contentImagesJSON, marshalErr := json.Marshal(contentImages)
 		if marshalErr != nil {

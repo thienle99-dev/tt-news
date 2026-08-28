@@ -846,6 +846,61 @@ small {
   display: block;
   margin-top: 12px;
 }
+.auto-summary-settings-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.auto-summary-settings-card h2 {
+  margin: 6px 0 0;
+  font: 600 1.2rem/1.2 Newsreader, Georgia, serif;
+}
+.settings-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 32px;
+  cursor: pointer;
+}
+.settings-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.settings-switch > span[aria-hidden] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--line);
+  transition: background 160ms ease;
+}
+.settings-switch > span[aria-hidden]::after {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 4px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 25%, transparent);
+  content: "";
+  transition: transform 160ms ease;
+}
+.settings-switch input:checked + span[aria-hidden] { background: var(--accent); }
+.settings-switch input:checked + span[aria-hidden]::after { transform: translateX(20px); }
+.settings-switch input:focus-visible + span[aria-hidden] { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .reader-settings-card h2 {
   margin: 8px 0 0;
   font: 600 1.5rem/1.1 Newsreader, Georgia, serif;

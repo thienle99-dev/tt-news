@@ -14,8 +14,9 @@ type config struct {
 	FeaturedBriefInterval, FeaturedBriefWindow     time.Duration
 	ContentCleanupInterval                         time.Duration
 	RSSContentUserAgent                            string
-	RSSFetchWorkers                                int
+	RSSFetchWorkers, RSSContentFetchWorkers        int
 	ContentCleanupLimit                            int
+	RSSContentFetchLimit                           int
 	DevAuth                                        bool
 	AIBackgroundScanning                           bool
 	AITranslateEnabled                             bool
@@ -46,6 +47,8 @@ func loadConfig() config {
 		ContentCleanupLimit:    positiveIntEnv("CONTENT_CLEANUP_LIMIT", 100),
 		RSSContentUserAgent:    env("RSS_CONTENT_USER_AGENT", "TelegramNewsRSSBot/1.0"),
 		RSSFetchWorkers:        positiveIntEnv("RSS_FETCH_WORKERS", 8),
+		RSSContentFetchWorkers: positiveIntEnv("RSS_CONTENT_FETCH_WORKERS", 6),
+		RSSContentFetchLimit:   positiveIntEnv("RSS_CONTENT_FETCH_LIMIT", 100),
 		AuthMaxAge:             duration("TELEGRAM_AUTH_MAX_AGE", 24*time.Hour),
 		DevAuth:                env("DEV_AUTH", "false") == "true",
 		DevUserID:              intEnv("DEV_USER_ID", 999001),
