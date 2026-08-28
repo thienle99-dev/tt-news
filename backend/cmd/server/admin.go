@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -70,6 +71,14 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		item.Enabled = enabled == 1
 		sources = append(sources, item)
 	}
+	if err = rows.Err(); err != nil {
+		jsonErr(w, 500, "could not read source status")
+		return
+	}
+	if err = rows.Close(); err != nil {
+		jsonErr(w, 500, "could not close source status")
+		return
+	}
 	counts := map[string]int64{}
 	for key, query := range map[string]string{
 		"translation_queue":      "SELECT count(*) FROM translation_jobs",
@@ -81,9 +90,44 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 		_ = s.db.QueryRowContext(r.Context(), query).Scan(&count)
 		counts[key] = count
 	}
+	type jobStatus struct {
+		ID          int64  `json:"id"`
+		Kind        string `json:"kind"`
+		Title       string `json:"title"`
+		Status      string `json:"status"`
+		Detail      string `json:"detail"`
+		TargetCount int    `json:"target_count"`
+		StartedAt   string `json:"started_at"`
+		FinishedAt  string `json:"finished_at"`
+	}
+	jobs := []jobStatus{}
+	jobRows, err := s.db.QueryContext(r.Context(), `SELECT id,kind,title,status,detail,target_count,started_at,finished_at FROM job_runs ORDER BY id DESC LIMIT 8`)
+	if err != nil {
+		jsonErr(w, 500, "could not load job status")
+		return
+	}
+	for jobRows.Next() {
+		var job jobStatus
+		if err = jobRows.Scan(&job.ID, &job.Kind, &job.Title, &job.Status, &job.Detail, &job.TargetCount, &job.StartedAt, &job.FinishedAt); err != nil {
+			jobRows.Close()
+			jsonErr(w, 500, "could not read job status")
+			return
+		}
+		jobs = append(jobs, job)
+	}
+	if err = jobRows.Err(); err != nil {
+		jobRows.Close()
+		jsonErr(w, 500, "could not read job status")
+		return
+	}
+	jobRows.Close()
+	if counts["translation_queue"] > 0 {
+		jobs = append(jobs, jobStatus{Kind: "translation", Title: "Dịch bài tiếng Việt", Status: "queued", Detail: fmt.Sprintf("%d bài đang chờ xử lý", counts["translation_queue"]), TargetCount: int(counts["translation_queue"])})
+	}
 	jsonOut(w, 200, map[string]any{
 		"sources":           sources,
 		"translation_queue": counts["translation_queue"],
+		"jobs":              jobs,
 		"ai":                map[string]any{"model": aiSettings.Model, "configured": s.aiConfigured(), "config_source": aiSource, "translations_generated": counts["translations_generated"], "featured_briefs": counts["featured_briefs"], "feedback": counts["ai_feedback"], "cost_tracking": "provider token/cost usage is not exposed by the configured Chat Completions client"},
 	})
 }

@@ -1938,10 +1938,20 @@ function AdminPage() {
     try {
       await api.adminRegenerateFeatured(token, articleCount);
       setMessage(`Đã bắt đầu tạo Bản tin hằng ngày với ${articleCount} tin. Quá trình này chạy nền; tải lại dashboard sau ít phút để xem kết quả.`);
+      window.setTimeout(() => {
+        void api.adminStatus(token).then(setStatus).catch(() => {});
+      }, 300);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Không thể tạo bản tin hằng ngày.");
     } finally { setBusy(""); }
   };
+  useEffect(() => {
+    if (!status || !token || (status.translation_queue === 0 && !status.jobs.some(job => job.status === "running"))) return;
+    const refresh = window.setInterval(() => {
+      void api.adminStatus(token).then(setStatus).catch(() => {});
+    }, 5_000);
+    return () => window.clearInterval(refresh);
+  }, [status, token]);
   return (
     <main className="admin-shell">
       <div className="app-shell">
@@ -2062,6 +2072,29 @@ function AdminPage() {
                   <p><strong>Model đang dùng</strong><span>{status.ai.model || "Chưa chọn model"}</span></p>
                   <p className="operations-note">{status.ai.cost_tracking}</p>
                 </div>
+                <section className="admin-jobs" aria-labelledby="admin-jobs-title">
+                  <div className="admin-jobs-heading">
+                    <div>
+                      <small>JOBS</small>
+                      <h3 id="admin-jobs-title">Tiến trình tác vụ</h3>
+                    </div>
+                    {(status.translation_queue > 0 || status.jobs.some(job => job.status === "running")) && <span className="jobs-refreshing" role="status">Tự làm mới</span>}
+                  </div>
+                  {status.jobs.length ? (
+                    <ul className="admin-job-list">
+                      {status.jobs.map(job => (
+                        <li key={`${job.kind}-${job.id}-${job.started_at}`}>
+                          <span className={`job-status job-status-${job.status}`}>{job.status === "running" ? "Đang chạy" : job.status === "queued" ? "Đang chờ" : job.status === "completed" ? "Hoàn tất" : job.status === "skipped" ? "Đã bỏ qua" : "Thất bại"}</span>
+                          <div>
+                            <strong>{job.title}</strong>
+                            <p>{job.detail || (job.target_count ? `${job.target_count} tin` : "Đang chuẩn bị tác vụ")}</p>
+                          </div>
+                          {job.started_at && <time dateTime={job.started_at}>{formatAdminTime(job.finished_at || job.started_at)}</time>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="admin-jobs-empty">Chưa có tác vụ nào được ghi nhận.</p>}
+                </section>
                 </section>
               </div>
               <AdminSources sources={status.sources} token={token} action={action} />

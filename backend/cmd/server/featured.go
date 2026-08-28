@@ -38,61 +38,83 @@ func (s *server) runFeaturedWorker(ctx context.Context) {
 	}
 }
 
-func (s *server) generateFeaturedBrief(ctx context.Context) {
-	s.generateFeaturedBriefWithTarget(ctx, defaultFeaturedArticleTarget)
+func (s *server) generateFeaturedBrief(ctx context.Context) error {
+	return s.generateFeaturedBriefWithTarget(ctx, defaultFeaturedArticleTarget)
 }
 
-func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTarget int) {
+func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTarget int) (err error) {
 	if !s.aiConfigured() {
-		return
+		return errors.New("AI is not configured")
 	}
 	articleTarget = min(max(articleTarget, minFeaturedArticleTarget), featuredCandidateLimit)
+	jobID, jobErr := s.startJob(ctx, "daily_brief", "Tạo bản tin hôm nay", articleTarget)
+	if jobErr != nil {
+		log.Printf("featured job tracking: %v", jobErr)
+	}
+	jobStatus, jobDetail := "completed", "Bản tin đã được tạo"
+	defer func() {
+		if err != nil {
+			jobStatus, jobDetail = "failed", err.Error()
+		}
+		if jobID != 0 {
+			s.finishJob(context.Background(), jobID, jobStatus, jobDetail)
+		}
+	}()
 	s.featuredMu.Lock()
 	defer s.featuredMu.Unlock()
 	now := time.Now().UTC()
 	slot := now.Truncate(s.cfg.FeaturedBriefInterval)
 	var exists int
 	if err := s.db.QueryRowContext(ctx, "SELECT 1 FROM featured_briefs WHERE slot_start=?", slot.Format(time.RFC3339)).Scan(&exists); err == nil {
-		log.Print("featured briefing skipped: already generated for the current slot")
-		return
+		jobStatus, jobDetail = "skipped", "Bản tin cho khung thời gian hiện tại đã tồn tại"
+		return nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("featured briefing lookup: %v", err)
-		return
+		return fmt.Errorf("featured briefing lookup: %w", err)
 	}
 	windowStart := now.Add(-s.cfg.FeaturedBriefWindow)
 	candidates, err := s.featuredCandidates(ctx, windowStart)
 	if err != nil {
-		log.Printf("featured briefing candidates: %v", err)
-		return
+		return fmt.Errorf("featured briefing candidates: %w", err)
 	}
 	if len(candidates) < 3 {
-		log.Printf("featured briefing skipped: only %d eligible articles", len(candidates))
-		return
+		jobStatus, jobDetail = "skipped", fmt.Sprintf("Chỉ có %d bài phù hợp", len(candidates))
+		return nil
 	}
 	client := s.aiClient()
 	brief, err := client.Featured(ctx, candidates, articleTarget)
 	if err != nil {
-		log.Printf("featured briefing generation: %v", err)
-		return
+		return fmt.Errorf("featured briefing generation: %w", err)
 	}
 	if err = validateFeaturedBrief(brief, candidates, articleTarget); err != nil {
-		log.Printf("featured briefing validation: %v", err)
-		return
+		return fmt.Errorf("featured briefing validation: %w", err)
 	}
 	vietnamese, err := client.FeaturedVietnamese(ctx, brief)
 	if err != nil {
-		log.Printf("featured briefing Vietnamese translation: %v", err)
-		return
+		return fmt.Errorf("featured briefing Vietnamese translation: %w", err)
 	}
 	if err = validateFeaturedTranslation(vietnamese, brief); err != nil {
-		log.Printf("featured briefing Vietnamese validation: %v", err)
-		return
+		return fmt.Errorf("featured briefing Vietnamese validation: %w", err)
 	}
 	if err = s.storeFeaturedBrief(ctx, slot, windowStart, now, brief, vietnamese); err != nil {
-		log.Printf("featured briefing save: %v", err)
-		return
+		return fmt.Errorf("featured briefing save: %w", err)
 	}
 	log.Printf("featured briefing generated: topics=%d articles=%d candidates=%d", len(brief.Topics), min(articleTarget, len(candidates)), len(candidates))
+	return nil
+}
+
+func (s *server) startJob(ctx context.Context, kind, title string, targetCount int) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `INSERT INTO job_runs(kind,title,status,target_count,started_at) VALUES(?,?, 'running', ?, ?)`, kind, title, targetCount, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (s *server) finishJob(ctx context.Context, jobID int64, status, detail string) {
+	_, err := s.db.ExecContext(ctx, `UPDATE job_runs SET status=?,detail=?,finished_at=? WHERE id=?`, status, detail, time.Now().UTC().Format(time.RFC3339), jobID)
+	if err != nil {
+		log.Printf("job %d update: %v", jobID, err)
+	}
 }
 
 func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]translationservice.FeaturedCandidate, error) {
