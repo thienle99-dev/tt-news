@@ -85,7 +85,11 @@ func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTar
 		return fmt.Errorf("featured briefing generation: %w", err)
 	}
 	if err = validateFeaturedBrief(brief, candidates, articleTarget); err != nil {
-		return fmt.Errorf("featured briefing validation: %w", err)
+		articleIDs := 0
+		for _, topic := range brief.Topics {
+			articleIDs += len(topic.ArticleIDs)
+		}
+		return fmt.Errorf("featured briefing validation (candidates=%d target=%d topics=%d article_ids=%d): %w", len(candidates), min(articleTarget, len(candidates)), len(brief.Topics), articleIDs, err)
 	}
 	vietnamese, err := client.FeaturedVietnamese(ctx, brief)
 	if err != nil {
@@ -131,7 +135,7 @@ func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []
 	minimumTopics := max(3, (targetArticles+2)/3)
 	maximumTopics := min(12, targetArticles)
 	if brief.Title == "" || brief.Intro == "" || len(brief.Takeaways) != 3 || len(brief.Topics) < minimumTopics || len(brief.Topics) > maximumTopics {
-		return fmt.Errorf("brief must contain a title, intro, 3 takeaways, and %d to %d topics", minimumTopics, maximumTopics)
+		return fmt.Errorf("brief must contain a title, intro, 3 takeaways, and %d to %d topics (received title=%t intro=%t takeaways=%d topics=%d)", minimumTopics, maximumTopics, brief.Title != "", brief.Intro != "", len(brief.Takeaways), len(brief.Topics))
 	}
 	for _, takeaway := range brief.Takeaways {
 		if strings.TrimSpace(takeaway) == "" {

@@ -379,7 +379,8 @@ function Icon({
     | "moon"
     | "sun"
     | "history"
-    | "share";
+    | "share"
+    | "power";
   filled?: boolean;
 }) {
   const common = {
@@ -421,6 +422,7 @@ function Icon({
     ),
     history: <><path {...common} d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5" /><path {...common} d="M4 4v4.5h4.5M12 7v5l3 2" /></>,
     share: <><circle {...common} cx="18" cy="5" r="2.5" /><circle {...common} cx="6" cy="12" r="2.5" /><circle {...common} cx="18" cy="19" r="2.5" /><path {...common} d="m8.2 10.8 7.6-4.6m-7.6 7 7.6 4.6" /></>,
+    power: <><path {...common} d="M12 3v9" /><path {...common} d="M7.1 5.9a8 8 0 1 0 9.8 0" /></>,
     settings: (
       <>
         <circle {...common} cx="12" cy="12" r="3" />
@@ -1847,7 +1849,7 @@ function AdminSources({
                   </div>
                 </div>
                 <div className="source-row-actions">
-                  <button type="button" className="source-run-button" disabled={!source.enabled || Boolean(operation)} onClick={() => void runFetch([source.id], `source-${source.id}`)}>{operation === `source-${source.id}` ? "Đang chạy…" : "Chạy ngay"}</button>
+                  <button type="button" className="source-run-button" disabled={!source.enabled || Boolean(operation)} onClick={() => void runFetch([source.id], `source-${source.id}`)}>{operation === `source-${source.id}` ? "Đang chạy…" : "Chạy"}</button>
                   <button
                     type="button"
                     className={source.enabled ? "source-toggle enabled" : "source-toggle"}
@@ -1855,13 +1857,12 @@ function AdminSources({
                     aria-label={`${source.enabled ? "Tắt" : "Bật"} nguồn ${source.name}`}
                     onClick={() => void toggleSource(source)}
                   >
-                    {updatingID === source.id ? "Đang lưu…" : source.enabled ? "Tắt nguồn" : "Bật nguồn"}
+                    <Icon name="power" />
                   </button>
                 </div>
               </div>
               <dl className="source-metrics">
                 <div><dt>Thành công gần nhất</dt><dd>{formatAdminTime(source.last_success_at)}</dd></div>
-                <div><dt>Lần fetch cuối</dt><dd>{formatAdminTime(source.last_fetch_at)}</dd></div>
                 <div><dt>Bài mới</dt><dd>{source.last_inserted}</dd></div>
               </dl>
               {source.last_error && (
@@ -2119,7 +2120,9 @@ function AdminPage() {
                   <p><strong>Model đang dùng</strong><span>{status.ai.model || "Chưa chọn model"}</span></p>
                   <p className="operations-note">{status.ai.cost_tracking}</p>
                 </div>
-                <section className="admin-jobs" aria-labelledby="admin-jobs-title">
+                </section>
+              </div>
+              <section className="settings-card admin-jobs" aria-labelledby="admin-jobs-title">
                   <div className="admin-jobs-heading">
                     <div>
                       <small>JOBS</small>
@@ -2136,14 +2139,14 @@ function AdminPage() {
                             <strong>{job.title}</strong>
                             <p>{job.status === "running" ? (job.stage || "Đang chuẩn bị tác vụ") : (job.detail || job.stage || "Chưa có chi tiết")}{job.status === "running" && job.target_count > 0 ? ` · ${job.completed_count}/${job.target_count}` : ""}{job.status === "running" && job.failed_count > 0 ? ` · ${job.failed_count} lỗi` : ""}</p>
                           </div>
+                          {job.status === "running" && <button type="button" className="secondary-button job-cancel" disabled={busy === `cancel-${job.id}`} onClick={() => void cancelJob(job.id)}>{busy === `cancel-${job.id}` ? "Đang hủy…" : "Hủy"}</button>}
                           {job.started_at && <time dateTime={job.started_at}>{formatAdminTime(job.finished_at || job.started_at)}</time>}
                         </li>
                       ))}
                     </ul>
                   ) : <p className="admin-jobs-empty">Chưa có tác vụ nào được ghi nhận.</p>}
-                </section>
-                </section>
-              </div>
+                  {status.jobs_total > status.jobs_page_size && <div className="jobs-pagination"><button type="button" className="secondary-button" disabled={status.jobs_page <= 1} onClick={() => { const page = status.jobs_page - 1; setJobsPage(page); void load(page); }}>Trước</button><span>Trang {status.jobs_page}/{Math.ceil(status.jobs_total / status.jobs_page_size)}</span><button type="button" className="secondary-button" disabled={status.jobs_page >= Math.ceil(status.jobs_total / status.jobs_page_size)} onClick={() => { const page = status.jobs_page + 1; setJobsPage(page); void load(page); }}>Sau</button></div>}
+              </section>
               <AdminSources sources={status.sources} token={token} action={action} />
             </div>
           )}
