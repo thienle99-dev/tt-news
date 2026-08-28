@@ -127,6 +127,7 @@ const text = {
     translationError:
       "Could not translate this article. Showing the original text.",
     retry: "Try again",
+    refreshNews: "Refresh news",
     language: "Language",
     summary: "SUMMARY",
     summaryReadingTime: "{minutes} min summary read",
@@ -228,6 +229,7 @@ const text = {
     translating: "Đang dịch sang tiếng Việt…",
     translationError: "Không thể dịch bài này. Đang hiển thị nội dung gốc.",
     retry: "Thử lại",
+    refreshNews: "Làm mới tin",
     language: "Ngôn ngữ",
     summary: "TÓM TẮT",
     summaryReadingTime: "Đọc tóm tắt {minutes} phút",
@@ -688,6 +690,8 @@ const HomeMasthead = memo(function HomeMasthead({
   toggleTheme,
   hideRead,
   toggleHideRead,
+  refresh,
+  refreshing,
 }: {
   saved?: boolean;
   history?: boolean;
@@ -697,6 +701,8 @@ const HomeMasthead = memo(function HomeMasthead({
   toggleTheme: () => void;
   hideRead: boolean;
   toggleHideRead: () => void;
+  refresh?: () => void;
+  refreshing?: boolean;
 }) {
   const t = text[locale];
   return (
@@ -708,6 +714,7 @@ const HomeMasthead = memo(function HomeMasthead({
       <div className="header-actions">
         <LanguagePicker locale={locale} setLocale={setLocale} />
         <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
+        {refresh && <button type="button" className="theme-toggle refresh-news-button" aria-label={t.refreshNews} title={t.refreshNews} onClick={refresh} disabled={refreshing}>{refreshing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="history" />}</button>}
         {!saved && !history && <button className="text-button" onClick={toggleHideRead}>{hideRead ? t.showRead : t.hideRead}</button>}
       </div>
     </header>
@@ -1115,6 +1122,7 @@ function Home({
   const [savedSort, setSavedSort] = useState("saved_newest");
   const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
   const toggleHideRead = useCallback(() => setHideRead(value => !value), []);
+  const refreshNews = useCallback(() => { setOffset(0); setHasMore(true); setReload(value => value + 1); }, []);
   const t = text[locale];
   const params = useMemo(
     () =>
@@ -1301,7 +1309,7 @@ function Home({
   ];
   return (
     <section className="page editorial">
-      <HomeMasthead saved={saved} history={history} locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} hideRead={hideRead} toggleHideRead={toggleHideRead} />
+      <HomeMasthead saved={saved} history={history} locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} hideRead={hideRead} toggleHideRead={toggleHideRead} refresh={!saved && !history ? refreshNews : undefined} refreshing={!saved && !history && loading} />
       {!history && (
         <FilterControls
           locale={locale}
