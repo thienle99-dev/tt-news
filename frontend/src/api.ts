@@ -44,7 +44,7 @@ export const api = {
   adminStatus: (token: string) => request<{ sources: { id: number; name: string; enabled: boolean; last_fetch_at: string; last_success_at: string; last_error: string; last_inserted: number }[]; translation_queue: number; ai: { model: string; configured: boolean; translations_generated: number; featured_briefs: number; feedback: number; cost_tracking: string } }>('/api/admin/status', { headers: { 'X-Admin-Token': token } }),
   adminFetchRSS: (token: string, sourceIDs: number[] = []) => request<{ status: string; source_count: number }>('/api/admin/rss/fetch', adminOptions(token, 'POST', { source_ids: sourceIDs })),
   adminEnqueueTranslations: (token: string, sourceIDs: number[]) => request<{ status: string; queued: number; source_count: number }>('/api/admin/translations/enqueue', adminOptions(token, 'POST', { source_ids: sourceIDs })),
-  adminRegenerateFeatured: (token: string) => request<{ status: string }>('/api/admin/featured/regenerate', { method: 'POST', headers: { 'X-Admin-Token': token } }),
+  adminRegenerateFeatured: (token: string, articleCount: number) => request<{ status: string; article_count: number }>('/api/admin/featured/regenerate', adminOptions(token, 'POST', { article_count: articleCount })),
   adminUpdateSource: (token: string, id: number, enabled: boolean) => request<{ enabled: boolean }>(`/api/admin/sources/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }), headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' } }),
   adminAIConfig: (token: string) => request<AIConfig>('/api/admin/ai/config', adminOptions(token)),
   adminAIModels: (token: string, input: AIConfigInput) => request<AIModel[]>('/api/admin/ai/models', adminOptions(token, 'POST', input)),

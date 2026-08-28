@@ -13,8 +13,12 @@ import (
 	translationservice "telegram-news/internal/translation"
 )
 
-const featuredCandidateLimit = 80
+// Keep enough source material for a daily briefing of roughly 20 articles
+// without making the AI request unnecessarily large.
+const featuredCandidateLimit = 24
 const featuredPerSourceLimit = 4
+const defaultFeaturedArticleTarget = 20
+const minFeaturedArticleTarget = 3
 
 func (s *server) runFeaturedWorker(ctx context.Context) {
 	if !s.aiConfigured() {
@@ -35,9 +39,14 @@ func (s *server) runFeaturedWorker(ctx context.Context) {
 }
 
 func (s *server) generateFeaturedBrief(ctx context.Context) {
+	s.generateFeaturedBriefWithTarget(ctx, defaultFeaturedArticleTarget)
+}
+
+func (s *server) generateFeaturedBriefWithTarget(ctx context.Context, articleTarget int) {
 	if !s.aiConfigured() {
 		return
 	}
+	articleTarget = min(max(articleTarget, minFeaturedArticleTarget), featuredCandidateLimit)
 	s.featuredMu.Lock()
 	defer s.featuredMu.Unlock()
 	now := time.Now().UTC()
@@ -61,12 +70,12 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 		return
 	}
 	client := s.aiClient()
-	brief, err := client.Featured(ctx, candidates)
+	brief, err := client.Featured(ctx, candidates, articleTarget)
 	if err != nil {
 		log.Printf("featured briefing generation: %v", err)
 		return
 	}
-	if err = validateFeaturedBrief(brief, candidates); err != nil {
+	if err = validateFeaturedBrief(brief, candidates, articleTarget); err != nil {
 		log.Printf("featured briefing validation: %v", err)
 		return
 	}
@@ -83,11 +92,11 @@ func (s *server) generateFeaturedBrief(ctx context.Context) {
 		log.Printf("featured briefing save: %v", err)
 		return
 	}
-	log.Printf("featured briefing generated: topics=%d candidates=%d", len(brief.Topics), len(candidates))
+	log.Printf("featured briefing generated: topics=%d articles=%d candidates=%d", len(brief.Topics), min(articleTarget, len(candidates)), len(candidates))
 }
 
 func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]translationservice.FeaturedCandidate, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,a.summary,s.name,c.slug,a.published_at FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE s.enabled=1 AND a.summary<>'' AND a.published_at>=? ORDER BY a.published_at DESC,a.id DESC`, since.Format(time.RFC3339))
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,COALESCE(NULLIF(a.summary,''),a.description),s.name,c.slug,a.published_at FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE s.enabled=1 AND (a.summary<>'' OR a.description<>'') AND a.published_at>=? ORDER BY a.published_at DESC,a.id DESC`, since.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
@@ -111,9 +120,12 @@ func (s *server) featuredCandidates(ctx context.Context, since time.Time) ([]tra
 	return out, rows.Err()
 }
 
-func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []translationservice.FeaturedCandidate) error {
-	if brief.Title == "" || brief.Intro == "" || len(brief.Takeaways) != 3 || len(brief.Topics) < 3 || len(brief.Topics) > 5 {
-		return errors.New("brief must contain a title, intro, 3 takeaways, and 3 to 5 topics")
+func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []translationservice.FeaturedCandidate, articleTarget int) error {
+	targetArticles := min(articleTarget, len(candidates))
+	minimumTopics := max(3, (targetArticles+2)/3)
+	maximumTopics := min(12, targetArticles)
+	if brief.Title == "" || brief.Intro == "" || len(brief.Takeaways) != 3 || len(brief.Topics) < minimumTopics || len(brief.Topics) > maximumTopics {
+		return fmt.Errorf("brief must contain a title, intro, 3 takeaways, and %d to %d topics", minimumTopics, maximumTopics)
 	}
 	for _, takeaway := range brief.Takeaways {
 		if strings.TrimSpace(takeaway) == "" {
@@ -134,6 +146,9 @@ func validateFeaturedBrief(brief translationservice.FeaturedBrief, candidates []
 			}
 			used[id] = true
 		}
+	}
+	if len(used) != targetArticles {
+		return fmt.Errorf("brief must use exactly %d distinct articles", targetArticles)
 	}
 	return nil
 }
@@ -248,19 +263,34 @@ func (s *server) featured(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+	topics := []featuredTopic{}
 	for rows.Next() {
 		var topic featuredTopic
 		if err = rows.Scan(&topic.ID, &topic.Position, &topic.Title, &topic.Summary, &topic.WhyItMatters); err != nil {
 			jsonErr(w, 500, "could not read featured topics")
 			return
 		}
-		topic.Articles, err = s.featuredTopicArticles(r.Context(), topic.ID, language, r)
+		topics = append(topics, topic)
+	}
+	if err = rows.Err(); err != nil {
+		jsonErr(w, 500, "could not read featured topics")
+		return
+	}
+	// SQLite is intentionally configured with one connection. Release the
+	// topic rows before loading their articles, otherwise the nested queries
+	// wait for the connection held by rows.
+	if err = rows.Close(); err != nil {
+		jsonErr(w, 500, "could not close featured topics")
+		return
+	}
+	for index := range topics {
+		topics[index].Articles, err = s.featuredTopicArticles(r.Context(), topics[index].ID, language, r)
 		if err != nil {
 			jsonErr(w, 500, "could not load featured articles")
 			return
 		}
-		brief.Topics = append(brief.Topics, topic)
 	}
+	brief.Topics = topics
 	jsonOut(w, 200, brief)
 }
 

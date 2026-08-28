@@ -177,8 +177,8 @@ func (c Client) Test(ctx context.Context) (string, error) {
 	return strings.TrimSpace(content), nil
 }
 
-func (c Client) Featured(ctx context.Context, candidates []FeaturedCandidate) (FeaturedBrief, error) {
-	instruction := `You are the editor of a two-minute international daily briefing. Using only the supplied articles, select and group them into 3 to 5 distinct, important news events. Return only JSON with title, intro, takeaways, and topics. takeaways must contain exactly 3 short, self-contained factual bullets covering the most important developments; do not invent facts or imply certainty beyond the articles. Each topic needs title, summary, why_it_matters, and article_ids. summary states what happened in one or two concise factual sentences. why_it_matters gives one concise, source-grounded consequence or context; if no consequence is supported, state the immediate relevance without speculation. Each topic must cite 1 to 3 supplied article IDs, never invent IDs, and no ID may appear in more than one topic. Prefer diverse sources and topics.`
+func (c Client) Featured(ctx context.Context, candidates []FeaturedCandidate, articleTarget int) (FeaturedBrief, error) {
+	instruction := fmt.Sprintf(`You are the editor of an international daily news briefing. Using only the supplied articles, create a briefing covering exactly %d distinct articles; if fewer than %d are supplied, cover every supplied article. Group related coverage into distinct, important topics, with 1 to 3 article IDs per topic. Return only JSON with title, intro, takeaways, and topics. takeaways must contain exactly 3 short, self-contained factual bullets covering the most important developments; do not invent facts or imply certainty beyond the articles. Each topic needs title, summary, why_it_matters, and article_ids. summary states what happened in one or two concise factual sentences. why_it_matters gives one concise, source-grounded consequence or context; if no consequence is supported, state the immediate relevance without speculation. Every supplied article ID selected must appear exactly once: never invent IDs and never repeat an ID. Prefer diverse sources and topics.`, articleTarget, articleTarget)
 	return c.featuredRequest(ctx, instruction, candidates)
 }
 
@@ -208,7 +208,9 @@ func (c Client) featuredRequest(ctx context.Context, instruction string, input a
 	req.Header.Set("Content-Type", "application/json")
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 45 * time.Second}
+		// A daily brief includes many source articles, so it can take noticeably
+		// longer than a single-article summary on slower compatible providers.
+		client = &http.Client{Timeout: 2 * time.Minute}
 	}
 	res, err := client.Do(req)
 	if err != nil {

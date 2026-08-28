@@ -162,13 +162,28 @@ func (s *server) enqueueSourceTranslations(ctx context.Context, sourceIDs []int6
 }
 
 func (s *server) adminRegenerateFeatured(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ArticleCount int `json:"article_count"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		jsonErr(w, http.StatusBadRequest, "article_count must be a number")
+		return
+	}
+	articleTarget := defaultFeaturedArticleTarget
+	if body.ArticleCount != 0 {
+		if body.ArticleCount < minFeaturedArticleTarget || body.ArticleCount > featuredCandidateLimit {
+			jsonErr(w, http.StatusBadRequest, "article_count must be between 3 and 24")
+			return
+		}
+		articleTarget = body.ArticleCount
+	}
 	slot := time.Now().UTC().Truncate(s.cfg.FeaturedBriefInterval).Format(time.RFC3339)
 	if _, err := s.db.ExecContext(r.Context(), "DELETE FROM featured_briefs WHERE slot_start=?", slot); err != nil {
 		jsonErr(w, 500, "could not reset featured brief")
 		return
 	}
-	go s.generateFeaturedBrief(context.Background())
-	jsonOut(w, http.StatusAccepted, map[string]string{"status": "featured brief generation started"})
+	go s.generateFeaturedBriefWithTarget(context.Background(), articleTarget)
+	jsonOut(w, http.StatusAccepted, map[string]any{"status": "featured brief generation started", "article_count": articleTarget})
 }
 
 func (s *server) adminUpdateSource(w http.ResponseWriter, r *http.Request) {

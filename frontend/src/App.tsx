@@ -128,6 +128,10 @@ const text = {
     retry: "Try again",
     language: "Language",
     summary: "SUMMARY",
+    summaryReadingTime: "{minutes} min summary read",
+    readMode: "Reading mode",
+    exitReadMode: "Exit reading mode",
+    scrollToTop: "Scroll to top",
     articleContent: "ARTICLE",
     source: "Source",
     summaryEmpty: "No summary yet. Use the sparkle button to generate one.",
@@ -224,6 +228,10 @@ const text = {
     retry: "Thử lại",
     language: "Ngôn ngữ",
     summary: "TÓM TẮT",
+    summaryReadingTime: "Đọc tóm tắt {minutes} phút",
+    readMode: "Chế độ đọc",
+    exitReadMode: "Thoát chế độ đọc",
+    scrollToTop: "Lên đầu trang",
     articleContent: "NỘI DUNG BÀI VIẾT",
     source: "Nguồn",
     summaryEmpty: "Chưa có bản tóm tắt. Nhấn nút ở góc phải để AI tạo tóm tắt.",
@@ -345,6 +353,7 @@ function Icon({
     | "settings"
     | "filter"
     | "arrow-left"
+    | "arrow-up"
     | "arrow-up-right"
     | "close"
     | "pen"
@@ -402,6 +411,7 @@ function Icon({
     ),
     filter: <path {...common} d="M4 6h16M7 12h10m-7 6h4" />,
     "arrow-left": <path {...common} d="m14 6-6 6 6 6M8 12h12" />,
+    "arrow-up": <path {...common} d="m6 14 6-6 6 6M12 6v12" />,
     "arrow-up-right": <path {...common} d="M7 17 17 7M9 7h8v8" />,
     close: <path {...common} d="m6 6 12 12M18 6 6 18" />,
     pen: (
@@ -417,12 +427,43 @@ function Icon({
     </svg>
   );
 }
+const lightboxConfigPattern = /\{\s*"lightbox_close"[\s\S]*?"lightbox_toggle_sidebar"\s*:\s*"[^"]*"\s*\}/g;
+
+const cleanOriginalText = (value: string) =>
+  value
+    .replace(lightboxConfigPattern, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\n[ \t]+\n/g, "\n\n")
+    .trim();
+
+function PlainTextParagraphs({ value }: { value: string }) {
+  return (
+    <>
+      {cleanOriginalText(value)
+        .split(/\n\s*\n/)
+        .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
+        .filter(Boolean)
+        .map((paragraph, index) => (
+          <p className="detail-paragraph" key={index}>
+            <AIFormattedText value={paragraph} />
+          </p>
+        ))}
+    </>
+  );
+}
+
 function FormattedDescription({ value }: { value: string }) {
-  const doc = new DOMParser().parseFromString(value, "text/html");
+  const cleanedValue = cleanOriginalText(value);
+  if (!cleanedValue) return null;
+  if (!cleanedValue.includes("<")) {
+    return <div className="detail-description"><PlainTextParagraphs value={cleanedValue} /></div>;
+  }
+  const doc = new DOMParser().parseFromString(cleanedValue, "text/html");
   const render = (node: Node, key: string): ReactNode => {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent;
     if (node.nodeType !== Node.ELEMENT_NODE) return null;
     const element = node as HTMLElement;
+    if (["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(element.tagName)) return null;
     const children = Array.from(element.childNodes).map((child, index) =>
       render(child, `${key}-${index}`),
     );
@@ -503,6 +544,10 @@ function SummaryContent({
     </p>
   );
 }
+const estimateReadingMinutes = (value: string) => {
+  const words = textOnly(value).trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 180));
+};
 function RSSDescription({ description }: { description: string }) {
   if (!description) return null;
   return <FormattedDescription value={description} />;
@@ -845,6 +890,7 @@ function Detail({
   const [feedbackReason, setFeedbackReason] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackFailed, setFeedbackFailed] = useState(false);
+  const [readingMode, setReadingMode] = useState(false);
   const t = text[locale];
   const resummarize = async () => {
     setResummarizing(true);
@@ -866,12 +912,17 @@ function Detail({
     setFeedbackReason("");
     setFeedbackSent(false);
     setFeedbackFailed(false);
+    setReadingMode(false);
   }, [article.id]);
   useEffect(() => {
     void api.startReading(article.id);
   }, [article.id]);
   const title = manualBrief?.title || article.title;
   const summary = manualBrief?.summary || article.summary;
+  const summaryReadingTime = t.summaryReadingTime.replace(
+    "{minutes}",
+    String(estimateReadingMinutes(summary)),
+  );
   const aiNotice =
     locale === "vi"
       ? "Đoạn tóm tắt này được tạo bởi AI và có thể chứa thông tin không chính xác."
@@ -892,7 +943,7 @@ function Detail({
     } catch { setFeedbackFailed(true); }
   };
   return (
-    <section className="page detail">
+    <section className={`page detail ${readingMode ? "reading-mode" : ""}`}>
       <button className="back-button" onClick={back}>
         <Icon name="arrow-left" />
         {t.back}
@@ -913,6 +964,17 @@ function Detail({
         {t.source}: {article.source}
         <Icon name="arrow-up-right" />
       </a>
+      <div className="reading-tools" aria-label={locale === "vi" ? "Công cụ đọc bài" : "Reading tools"}>
+        <span className="reading-time" aria-label={summaryReadingTime}>{summaryReadingTime}</span>
+        <button
+          type="button"
+          className="read-mode-button"
+          aria-pressed={readingMode}
+          onClick={() => setReadingMode((enabled) => !enabled)}
+        >
+          {readingMode ? t.exitReadMode : t.readMode}
+        </button>
+      </div>
       {article.image_url && (
         <img className="detail-image" src={article.image_url} alt="" />
       )}
@@ -1535,6 +1597,27 @@ function MediumReader({ locale, back }: { locale: Locale; back: () => void }) {
     </article>}
   </section>;
 }
+function ScrollToTop({ locale, compact }: { locale: Locale; compact: boolean }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const updateVisibility = () => setVisible(window.scrollY > 360);
+    updateVisibility();
+    window.addEventListener("scroll", updateVisibility, { passive: true });
+    return () => window.removeEventListener("scroll", updateVisibility);
+  }, []);
+  if (!visible) return null;
+  return (
+    <button
+      type="button"
+      className={`scroll-to-top ${compact ? "scroll-to-top-content" : ""}`}
+      aria-label={text[locale].scrollToTop}
+      title={text[locale].scrollToTop}
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+    >
+      <Icon name="arrow-up" />
+    </button>
+  );
+}
 const BottomNavigation = memo(function BottomNavigation({
   tab,
   locale,
@@ -1776,6 +1859,7 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [testReply, setTestReply] = useState("");
   const [testError, setTestError] = useState("");
+  const [featuredArticleCount, setFeaturedArticleCount] = useState(20);
   const load = async () => {
     setBusy("load");
     try {
@@ -1847,24 +1931,49 @@ function AdminPage() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể khôi phục cấu hình env."); }
     finally { setBusy(""); }
   };
+  const generateDailyBrief = async () => {
+    const articleCount = Math.min(24, Math.max(3, featuredArticleCount || 20));
+    setFeaturedArticleCount(articleCount);
+    setBusy("featured"); setError(""); setMessage("");
+    try {
+      await api.adminRegenerateFeatured(token, articleCount);
+      setMessage(`Đã bắt đầu tạo Bản tin hằng ngày với ${articleCount} tin. Quá trình này chạy nền; tải lại dashboard sau ít phút để xem kết quả.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể tạo bản tin hằng ngày.");
+    } finally { setBusy(""); }
+  };
   return (
-    <main>
+    <main className="admin-shell">
       <div className="app-shell">
         <section className="page settings admin-page">
-          <h1>Vận hành</h1>
-          <div className="admin-login">
-            <label className="admin-field">
-              <span>ADMIN TOKEN</span>
-              <input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" />
-            </label>
-            <button className="primary" disabled={!token || busy === "load"} onClick={() => void load()}>
-              {busy === "load" ? "Đang tải…" : "Tải dashboard"}
-            </button>
-          </div>
-          {error && <p className="state error" role="alert">{error}</p>}
-          {message && <p className="state success" role="status">{message}</p>}
+          <header className="admin-hero">
+            <div>
+              <p className="section-kicker">SIGNAL BRIEF / ADMIN</p>
+              <h1>Trung tâm vận hành</h1>
+              <p>Quản lý AI, tạo bản tin hằng ngày và theo dõi nguồn tin trong một không gian tập trung.</p>
+            </div>
+            {status && <span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span>}
+          </header>
+          <section className="admin-access-card" aria-labelledby="admin-access-title">
+            <div>
+              <small>QUYỀN QUẢN TRỊ</small>
+              <h2 id="admin-access-title">Mở dashboard</h2>
+              <p>Nhập admin token để tải dữ liệu vận hành mới nhất.</p>
+            </div>
+            <form className="admin-login" onSubmit={event => { event.preventDefault(); void load(); }}>
+              <label className="admin-field">
+                <span>ADMIN TOKEN</span>
+                <input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" />
+              </label>
+              <button className="primary" disabled={!token || busy === "load"}>
+                {busy === "load" ? "Đang tải…" : status ? "Làm mới dashboard" : "Tải dashboard"}
+              </button>
+            </form>
+          </section>
+          {error && <p className="admin-notice error" role="alert">{error}</p>}
+          {message && <p className="admin-notice success" role="status" aria-live="polite">{message}</p>}
           {status && (
-            <>
+            <div className="admin-workspace">
               <section className="settings-card ai-config-card" aria-labelledby="ai-config-title">
                 <div className="admin-panel-heading">
                   <div>
@@ -1913,7 +2022,28 @@ function AdminPage() {
                   )}
                 </form>
               </section>
-              <section className="settings-card operations-card" aria-labelledby="operations-title">
+              <div className="admin-dashboard-grid">
+                <section className="settings-card featured-generator-card" aria-labelledby="featured-generator-title">
+                <small>BẢN TIN HẰNG NGÀY</small>
+                <h2 id="featured-generator-title">Tạo bản tin theo yêu cầu</h2>
+                <p>Chọn số lượng tin trước khi tạo. Bản tin được tạo nền từ các bài mới nhất trong 24 giờ qua.</p>
+                <div className="featured-generator-controls">
+                  <label className="featured-count-field">
+                    <span>Số tin</span>
+                    <input type="number" min="3" max="24" value={featuredArticleCount} onChange={event => setFeaturedArticleCount(Number(event.target.value))} disabled={busy !== "" || !status.ai.configured} />
+                  </label>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy !== "" || !status.ai.configured}
+                    onClick={() => void generateDailyBrief()}
+                  >
+                    {busy === "featured" ? "Đang bắt đầu tạo…" : "Tạo bản tin"}
+                  </button>
+                </div>
+                {!status.ai.configured && <p className="featured-generator-note" role="status">Cần hoàn tất cấu hình AI trước khi tạo bản tin.</p>}
+                </section>
+                <section className="settings-card operations-card" aria-labelledby="operations-title">
                 <div className="admin-panel-heading operations-heading">
                   <div>
                     <small>RSS & AI</small>
@@ -1931,11 +2061,11 @@ function AdminPage() {
                 <div className="operations-footer">
                   <p><strong>Model đang dùng</strong><span>{status.ai.model || "Chưa chọn model"}</span></p>
                   <p className="operations-note">{status.ai.cost_tracking}</p>
-                  <button type="button" className="secondary-button" onClick={() => void action(() => api.adminRegenerateFeatured(token))}>Tạo lại featured brief</button>
                 </div>
-              </section>
+                </section>
+              </div>
               <AdminSources sources={status.sources} token={token} action={action} />
-            </>
+            </div>
           )}
         </section>
       </div>
@@ -2122,6 +2252,7 @@ export default function App() {
         {showingReader && <MediumReader locale={locale} back={backFromReader} />}
       </div>
       {!showingDetail && !showingReader && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
+      <ScrollToTop locale={locale} compact={showingDetail || showingReader} />
     </main>
   );
 }
