@@ -198,6 +198,7 @@ func (s *server) routes() http.Handler {
 		r.Use(jsonContent)
 		r.Get("/articles", s.listArticles)
 		r.Get("/articles/{id}", s.getArticle)
+		r.Get("/articles/{id}/related", s.relatedArticles)
 		r.Get("/categories", s.categories)
 		r.Get("/sources", s.sources)
 		r.Get("/countries", s.countries)
@@ -227,6 +228,14 @@ func (s *server) routes() http.Handler {
 			r.Get("/me", s.me)
 			r.Get("/daily-digest", s.dailyDigestPreferences)
 			r.Put("/daily-digest", s.updateDailyDigestPreferences)
+			r.Get("/saved-filters", s.listSavedFilters)
+			r.Post("/saved-filters", s.createSavedFilter)
+			r.Delete("/saved-filters/{id}", s.deleteSavedFilter)
+			r.Get("/watches", s.listWatches)
+			r.Post("/watches/articles/{id}", s.followArticle)
+			r.Post("/watches/topics/{slug}", s.followTopic)
+			r.Patch("/watches/{id}", s.updateWatch)
+			r.Delete("/watches/{id}", s.deleteWatch)
 		})
 	})
 	r.Route("/api/admin", func(r chi.Router) {
@@ -409,6 +418,19 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	switch q.Get("sort") {
 	case "oldest":
 		order = "a.published_at ASC,a.id ASC"
+	case "worth_read":
+		preferenceScore := "0"
+		if logged {
+			preferenceScore = `CASE WHEN EXISTS(SELECT 1 FROM user_daily_digest_sources ds WHERE ds.user_id=? AND ds.source_id=a.source_id) THEN 22 ELSE 0 END+
+				CASE WHEN EXISTS(SELECT 1 FROM user_daily_digest_categories dc WHERE dc.user_id=? AND (dc.category_id=a.category_id OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id=dc.category_id))) THEN 22 ELSE 0 END`
+			args = append(args, u.ID, u.ID)
+		}
+		order = fmt.Sprintf(`(
+			CASE WHEN julianday(a.published_at)>=julianday('now','-6 hours') THEN 40 WHEN julianday(a.published_at)>=julianday('now','-24 hours') THEN 32 WHEN julianday(a.published_at)>=julianday('now','-3 days') THEN 22 WHEN julianday(a.published_at)>=julianday('now','-7 days') THEN 10 ELSE 0 END+
+			%s+
+			CASE WHEN COALESCE(h.last_success_at,'')<>'' AND COALESCE(h.last_error,'')='' THEN 10 WHEN COALESCE(h.last_success_at,'')<>'' THEN 6 ELSE 3 END+
+			CASE WHEN length(trim(a.full_content))>=500 THEN 15 WHEN length(trim(a.description))>=160 THEN 7 ELSE 0 END
+		) DESC,a.published_at DESC,a.id DESC`, preferenceScore)
 	case "relevant":
 		if term != "" {
 			order = fmt.Sprintf("CASE WHEN lower(%s)=lower(?) THEN 0 WHEN lower(%s) LIKE lower(?) THEN 1 WHEN lower(%s) LIKE lower(?) OR lower(%s) LIKE lower(?) THEN 2 ELSE 3 END,a.published_at DESC,a.id DESC", title, title, description, summary)
@@ -417,7 +439,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	args = append(args, limit, offset)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id LEFT JOIN source_health h ON h.source_id=s.id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -472,6 +494,67 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOut(w, 200, a)
+}
+
+const relatedArticlesLimit = 6
+
+func (s *server) relatedArticles(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		jsonErr(w, http.StatusBadRequest, "invalid article id")
+		return
+	}
+	var exists int
+	if err = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=? AND s.enabled=1`, id).Scan(&exists); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not load related articles")
+		return
+	}
+	if exists == 0 {
+		jsonErr(w, http.StatusNotFound, "article not found")
+		return
+	}
+	saved, read := "0", "0"
+	args := []any{}
+	if user, ok := s.optionalUser(r); ok {
+		saved = "EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?)"
+		read = "EXISTS(SELECT 1 FROM article_reading_history arh WHERE arh.article_id=a.id AND arh.user_id=? AND arh.status='read')"
+		args = append(args, user.ID, user.ID)
+	}
+	args = append(args, id, id, id, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339), relatedArticlesLimit)
+	query := fmt.Sprintf(`WITH target AS (SELECT source_id FROM articles WHERE id=?), target_categories AS (SELECT category_id FROM article_categories WHERE article_id=?)
+		SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s
+		FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id
+		WHERE a.id<>? AND a.published_at>=? AND s.enabled=1 AND (
+			a.source_id=(SELECT source_id FROM target) OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id IN target_categories)
+		)
+		ORDER BY (SELECT count(*) FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id IN target_categories) DESC,
+			CASE WHEN a.source_id=(SELECT source_id FROM target) THEN 1 ELSE 0 END DESC,a.published_at DESC,a.id DESC LIMIT ?`, saved, read)
+	rows, err := s.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not load related articles")
+		return
+	}
+	defer rows.Close()
+	items := []article{}
+	for rows.Next() {
+		var item article
+		var itemSaved, itemRead int
+		if err = rows.Scan(&item.ID, &item.Title, &item.Description, &item.Summary, &item.URL, &item.ImageURL, &item.Source, &item.SourceID, &item.CountryCode, &item.CountryName, &item.Category, &item.PublishedAt, &itemSaved, &itemRead); err != nil {
+			jsonErr(w, http.StatusInternalServerError, "could not read related articles")
+			return
+		}
+		item.IsSaved, item.IsRead = itemSaved == 1, itemRead == 1
+		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not read related articles")
+		return
+	}
+	if err = s.attachArticleCategoriesList(r.Context(), items); err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not load related article categories")
+		return
+	}
+	jsonOut(w, http.StatusOK, items)
 }
 
 func decodeContentImages(raw string) []string {
@@ -1356,6 +1439,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			if e = s.replaceArticleCategories(ctx, articleID, categoryDefinitions); e != nil {
 				return result, e
 			}
+			go s.notifyArticleWatches(context.Background(), articleID)
 			if s.cfg.AITranslateEnabled && s.cfg.RSSTranslateVietnamese {
 				if _, queueErr := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO translation_jobs(article_id,language_code) VALUES(?,'vi')`, articleID); queueErr != nil {
 					log.Printf("rss translation queue %s: %v", link, queueErr)
@@ -1461,7 +1545,9 @@ func (s *server) sendTelegramMessage(ctx context.Context, c *http.Client, payloa
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("Telegram sendMessage returned %s", res.Status)
 	}
-	var response struct{ OK bool `json:"ok"` }
+	var response struct {
+		OK bool `json:"ok"`
+	}
 	if e = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&response); e != nil {
 		return e
 	}

@@ -4,6 +4,7 @@ import "./featured.css";
 import { FilterControls, FilterIcon, FilterSelect } from "./filter-controls";
 import type {
   Article,
+  ArticleWatch,
   AIConfigInput,
   AIModel,
   Category,
@@ -13,6 +14,8 @@ import type {
   GoldRate,
   MediumReaderArticle,
   SavedOrganization,
+  SavedFilter,
+  SavedFilterValues,
   Source,
 } from "./types";
 
@@ -106,6 +109,10 @@ const text = {
     loadError: "Could not load briefs.",
     detailError: "This article could not be loaded.",
     filters: "Filters",
+    savedFilters: "Saved filters",
+    saveFilter: "Save filter",
+    filterName: "Filter name",
+    deleteFilter: "Delete filter",
     close: "Close",
     search: "Search",
     allCategories: "All categories",
@@ -120,6 +127,7 @@ const text = {
     switchToLight: "Switch to light mode",
     back: "Back",
     readOriginal: "Read original article",
+    relatedArticles: "Related articles",
     openArticle: "Open article",
     share: "Share article",
     save: "Save article",
@@ -220,6 +228,10 @@ const text = {
     loadError: "Không thể tải bản tóm tắt.",
     detailError: "Không thể tải bài viết này.",
     filters: "Bộ lọc",
+    savedFilters: "Bộ lọc đã lưu",
+    saveFilter: "Lưu bộ lọc",
+    filterName: "Tên bộ lọc",
+    deleteFilter: "Xóa bộ lọc",
     close: "Đóng",
     search: "Tìm kiếm",
     allCategories: "Tất cả thể loại",
@@ -234,6 +246,7 @@ const text = {
     switchToLight: "Chuyển sang giao diện sáng",
     back: "Quay lại",
     readOriginal: "Đọc bài gốc",
+    relatedArticles: "Bài viết liên quan",
     openArticle: "Mở bài viết",
     share: "Chia sẻ bài viết",
     save: "Lưu bài viết",
@@ -405,6 +418,7 @@ function Icon({
     | "sun"
     | "history"
     | "share"
+    | "bell"
     | "power"
     | "play";
   filled?: boolean;
@@ -448,6 +462,7 @@ function Icon({
     ),
     history: <><path {...common} d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5" /><path {...common} d="M4 4v4.5h4.5M12 7v5l3 2" /></>,
     share: <><circle {...common} cx="18" cy="5" r="2.5" /><circle {...common} cx="6" cy="12" r="2.5" /><circle {...common} cx="18" cy="19" r="2.5" /><path {...common} d="m8.2 10.8 7.6-4.6m-7.6 7 7.6 4.6" /></>,
+    bell: <><path {...common} d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path {...common} d="M10 21h4" /></>,
     power: <><path {...common} d="M12 3v9" /><path {...common} d="M7.1 5.9a8 8 0 1 0 9.8 0" /></>,
     play: <path {...common} d="m9 6 9 6-9 6Z" />,
     settings: (
@@ -944,11 +959,13 @@ function Detail({
   locale,
   back,
   autoSummarize,
+  openDetail,
 }: {
   article: Article;
   locale: Locale;
   back: () => void;
   autoSummarize: boolean;
+  openDetail: (article: Article) => void;
 }) {
   const [manualBrief, setManualBrief] = useState<Pick<
     Article,
@@ -962,6 +979,11 @@ function Detail({
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [feedbackFailed, setFeedbackFailed] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
+  const [related, setRelated] = useState<Article[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(true);
+  const [articleWatch, setArticleWatch] = useState<ArticleWatch | null>(null);
+  const [watchLoading, setWatchLoading] = useState(false);
+  const [watchError, setWatchError] = useState("");
   const autoSummaryRequested = useRef<number | null>(null);
   const t = text[locale];
   const resummarize = async () => {
@@ -985,6 +1007,23 @@ function Detail({
     setFeedbackSent(false);
     setFeedbackFailed(false);
     setReadingMode(false);
+    setArticleWatch(null);
+    setWatchError("");
+  }, [article.id]);
+  useEffect(() => {
+    let active = true;
+    api.watches().then(items => { if (active) setArticleWatch(items.find(item => item.article_id === article.id) ?? null); }).catch(() => {});
+    return () => { active = false; };
+  }, [article.id]);
+  useEffect(() => {
+    let active = true;
+    setRelated([]);
+    setRelatedLoading(true);
+    api.relatedArticles(article.id)
+      .then((items) => { if (active) setRelated(items); })
+      .catch(() => {})
+      .finally(() => { if (active) setRelatedLoading(false); });
+    return () => { active = false; };
   }, [article.id]);
   useEffect(() => {
     if (!autoSummarize || article.summary.trim() || autoSummaryRequested.current === article.id) return;
@@ -1018,6 +1057,14 @@ function Detail({
       setFeedbackIssue(null);
       setFeedbackReason("");
     } catch { setFeedbackFailed(true); }
+  };
+  const toggleArticleWatch = async () => {
+    setWatchLoading(true); setWatchError("");
+    try {
+      if (articleWatch?.enabled) setArticleWatch(await api.updateWatch(articleWatch.id, false));
+      else setArticleWatch(await api.followArticle(article.id));
+    } catch (caught) { setWatchError(caught instanceof Error ? caught.message : t.loadError); }
+    finally { setWatchLoading(false); }
   };
   return (
     <section className={`page detail ${readingMode ? "reading-mode" : ""}`}>
@@ -1059,7 +1106,12 @@ function Detail({
           <Icon name="share" />
           {t.share}
         </button>
+        <button type="button" className={`read-mode-button follow-article-button ${articleWatch?.enabled ? "active" : ""}`} aria-pressed={Boolean(articleWatch?.enabled)} disabled={watchLoading} onClick={() => void toggleArticleWatch()}>
+          <Icon name="bell" filled={Boolean(articleWatch?.enabled)} />
+          {watchLoading ? (locale === "vi" ? "Đang lưu…" : "Saving…") : articleWatch?.enabled ? (locale === "vi" ? "Đang theo dõi" : "Following") : (locale === "vi" ? "Theo dõi diễn biến" : "Follow updates")}
+        </button>
       </div>
+      {watchError && <p className="watch-error" role="alert">{watchError}</p>}
       {article.image_url && (
         <img className="detail-image" src={article.image_url} alt="" />
       )}
@@ -1114,8 +1166,37 @@ function Detail({
         {t.readOriginal}
         <Icon name="arrow-up-right" />
       </button>
+      {(relatedLoading || related.length > 0) && <section className="related-articles" aria-labelledby="related-articles-title" aria-busy={relatedLoading}>
+        <h2 id="related-articles-title">{t.relatedArticles}</h2>
+        {relatedLoading ? <div className="related-list related-skeletons" aria-hidden="true"><span /><span /><span /></div> : <div className="related-list">{related.map(item => <button type="button" className="related-card" key={item.id} onClick={() => openDetail(item)} aria-label={`${t.openArticle}: ${item.title}`}>
+          {item.image_url ? <img src={item.image_url} alt="" loading="lazy" /> : <span className="related-placeholder" aria-hidden="true">SIGNAL</span>}
+          <span className="related-copy"><span className="eyebrow">{item.source}<span aria-hidden="true"> · </span>{ago(item.published_at, locale)}</span><strong>{item.title}</strong><ArticleCategories article={item} locale={locale} /></span>
+        </button>)}</div>}
+      </section>}
     </section>
   );
+}
+function SavedFiltersBar({ locale, filter, setFilter, setSearch }: { locale: Locale; filter: Filters; setFilter: (filter: Filters) => void; setSearch: (value: string) => void }) {
+  const t = text[locale];
+  const [items, setItems] = useState<SavedFilter[]>([]);
+  const [name, setName] = useState("");
+  const [available, setAvailable] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { let active = true; api.savedFilters().then(items => { if (active) setItems(items); }).catch(() => { if (active) setAvailable(false); }); return () => { active = false; }; }, []);
+  if (!available) return null;
+  const save = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try { const created = await api.createSavedFilter(name.trim(), filter as SavedFilterValues); setItems(current => [created, ...current]); setName(""); }
+    catch { /* Keep the current selection available if saving fails. */ }
+    finally { setSaving(false); }
+  };
+  const apply = (item: SavedFilter) => { setFilter(item.filter); setSearch(item.filter.query); };
+  const remove = async (id: number) => { try { await api.deleteSavedFilter(id); setItems(current => current.filter(item => item.id !== id)); } catch {} };
+  return <section className="saved-filters-bar" aria-label={t.savedFilters}>
+    <div className="saved-filters-heading"><span>{t.savedFilters}</span><form onSubmit={event => { event.preventDefault(); void save(); }}><label className="sr-only" htmlFor="saved-filter-name">{t.filterName}</label><input id="saved-filter-name" value={name} onChange={event => setName(event.target.value)} placeholder={t.filterName} maxLength={80} /><button type="submit" className="text-button" disabled={!name.trim() || saving}>{t.saveFilter}</button></form></div>
+    {items.length > 0 && <div className="saved-filter-list">{items.map(item => <span key={item.id}><button type="button" onClick={() => apply(item)}>{item.name}</button><button type="button" className="saved-filter-delete" aria-label={`${t.deleteFilter}: ${item.name}`} onClick={() => void remove(item.id)}><Icon name="close" /></button></span>)}</div>}
+  </section>;
 }
 function Home({
   saved,
@@ -1341,6 +1422,7 @@ function Home({
   return (
     <section className="page editorial">
       <HomeMasthead saved={saved} history={history} locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} hideRead={hideRead} toggleHideRead={toggleHideRead} refresh={!saved && !history ? refreshNews : undefined} refreshing={!saved && !history && loading} />
+      {!saved && !history && <SavedFiltersBar locale={locale} filter={filter} setFilter={setFilter} setSearch={setSearch} />}
       {!history && (
         <FilterControls
           locale={locale}
@@ -1655,6 +1737,7 @@ function Settings({
         </label>
       </div>
       <DailyDigestSettings locale={locale} />
+      <WatchSettings locale={locale} />
       <div className="settings-card reader-settings-card">
         <small>TOOLS</small>
         <h2>{t.mediumReader}</h2>
@@ -1663,6 +1746,24 @@ function Settings({
       </div>
     </section>
   );
+}
+function WatchSettings({ locale }: { locale: Locale }) {
+  const [items, setItems] = useState<ArticleWatch[]>([]);
+  const [topics, setTopics] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyID, setBusyID] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const t = text[locale];
+  const load = () => Promise.all([api.watches(), api.categories()]).then(([watches, categoryItems]) => { setItems(watches); setTopics(categoryItems); }).catch((caught) => setError(caught instanceof Error ? caught.message : t.loadError)).finally(() => setLoading(false));
+  useEffect(() => { void load(); }, []);
+  const setEnabled = async (item: ArticleWatch, enabled: boolean) => { setBusyID(item.id); setError(""); try { const next = await api.updateWatch(item.id, enabled); setItems(current => current.map(value => value.id === next.id ? next : value)); } catch (caught) { setError(caught instanceof Error ? caught.message : t.loadError); } finally { setBusyID(null); } };
+  const remove = async (item: ArticleWatch) => { setBusyID(item.id); setError(""); try { await api.deleteWatch(item.id); setItems(current => current.filter(value => value.id !== item.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : t.loadError); } finally { setBusyID(null); } };
+  const followTopic = async (topic: Category) => { setBusyID(-topic.id); setError(""); try { const next = await api.followTopic(topic.slug); setItems(current => [next, ...current.filter(value => value.id !== next.id)]); } catch (caught) { setError(caught instanceof Error ? caught.message : t.loadError); } finally { setBusyID(null); } };
+  return <section className="settings-card watch-settings-card" aria-labelledby="watch-settings-title" aria-busy={loading}>
+    <div><small>TELEGRAM</small><h2 id="watch-settings-title">{locale === "vi" ? "Theo dõi & thông báo" : "Follows & alerts"}</h2><p>{locale === "vi" ? "Theo dõi từ trang bài viết hoặc một chủ đề. Khi có bài mới liên quan, Telegram sẽ báo cho bạn." : "Follow from an article or a topic. Telegram will alert you when a related new article arrives."}</p></div>
+    {loading ? <p className="admin-jobs-empty" role="status">{t.loading}</p> : <><div className="watch-topic-picker"><span>{locale === "vi" ? "Theo dõi chủ đề" : "Follow a topic"}</span><div className="digest-category-chips">{topics.map(topic => { const current = items.find(item => item.category_id === topic.id); return <button type="button" key={topic.id} aria-pressed={Boolean(current?.enabled)} disabled={Boolean(current?.enabled) || busyID === -topic.id} onClick={() => void followTopic(topic)}>{categories[topic.slug]?.[locale] ?? topic.name}</button>; })}</div></div>{items.length === 0 ? <p className="watch-empty">{locale === "vi" ? "Chưa có theo dõi bài viết nào. Mở một bài viết để bắt đầu." : "No article follows yet. Open an article to get started."}</p> : <div className="watch-list">{items.map(item => <article key={item.id} className={`watch-row ${item.enabled ? "" : "is-paused"}`}><div><span className="watch-kind"><Icon name="bell" />{item.kind === "article" ? (locale === "vi" ? "Bài viết" : "Article") : (locale === "vi" ? "Chủ đề" : "Topic")}</span><strong>{item.kind === "article" ? item.title : (categories[item.category_slug || ""]?.[locale] ?? item.category_name)}</strong><small>{item.enabled ? (locale === "vi" ? "Thông báo đang bật" : "Alerts on") : (locale === "vi" ? "Đã tạm dừng" : "Paused")}</small></div><div className="watch-actions"><button type="button" className="text-button" disabled={busyID === item.id} onClick={() => void setEnabled(item, !item.enabled)}>{item.enabled ? (locale === "vi" ? "Tạm dừng" : "Pause") : (locale === "vi" ? "Bật lại" : "Resume")}</button><button type="button" className="watch-remove" aria-label={locale === "vi" ? "Xóa theo dõi" : "Remove follow"} disabled={busyID === item.id} onClick={() => void remove(item)}><Icon name="close" /></button></div></article>)}</div>}</>}
+    {error && <p className="digest-message error" role="alert">{error}</p>}
+  </section>;
 }
 function DailyDigestSettings({ locale }: { locale: Locale }) {
   const t = text[locale];
@@ -2481,7 +2582,7 @@ export default function App() {
         </div>
         {showingDetail &&
           (article ? (
-            <Detail article={article} locale={locale} back={back} autoSummarize={autoSummarize} />
+            <Detail article={article} locale={locale} back={back} autoSummarize={autoSummarize} openDetail={openDetail} />
           ) : detailError ? (
             <section className="state error">
               <p>{t.detailError}</p>

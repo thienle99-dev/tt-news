@@ -17,6 +17,9 @@ export type AIModel = { id: string; owned_by?: string }
 export type AIConfig = { base_url: string; model: string; api_key_configured: boolean; source: 'env' | 'saved' }
 export type AIConfigInput = { base_url: string; api_key: string; model: string }
 export type DailyDigestPreferences = { enabled: boolean; category_ids: number[]; source_ids: number[] }
+export type SavedFilterValues = { category: string; source: string; country: string; query: string; period: string; sort: string }
+export type SavedFilter = { id: number; name: string; filter: SavedFilterValues; created_at: string }
+export type ArticleWatch = { id: number; kind: 'article' | 'topic'; article_id?: number; category_id?: number; title: string; category_slug?: string; category_name?: string; keyword?: string; enabled: boolean; created_at: string }
 export type MediumReaderArticle = {
   requested_url: string; canonical_url: string; resolved_url: string; title: string; subtitle?: string; author?: string
   published_at?: string; reading_time_minutes?: number; access: 'public' | 'author_free_link' | 'preview'; warning?: string
