@@ -145,6 +145,10 @@ docker compose run --rm --no-deps news-app /app/news rss-fetch --since 2026-08-2
 
 Có thể kết hợp filter nguồn và ngày, ví dụ: `docker compose run --rm --no-deps news-app /app/news rss-fetch bbc --days 3`.
 
+## Crawl Threads
+
+Mở `/admin`, thêm target **Profile** (ví dụ `zuck`) hoặc **Keyword / hashtag** (ví dụ `AI`, `#AI`), rồi chạy crawl. Post công khai được xem riêng tại `/threads`; cấu hình `THREADS_FETCH_INTERVAL` mặc định là `30m`.
+
 ## Dịch tiếng Việt theo yêu cầu
 
 Để dịch và cache tiếng Việt cho toàn bộ bài chưa có bản dịch (chỉ title/tóm tắt), chạy:

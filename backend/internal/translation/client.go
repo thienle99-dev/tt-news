@@ -28,6 +28,13 @@ type Fields struct {
 	Title, Description, Summary string
 }
 
+// ThreadClassification is the compact editorial decision used by the Threads
+// discovery worker. Category is one of the application's category slugs.
+type ThreadClassification struct {
+	Relevant bool   `json:"relevant"`
+	Category string `json:"category"`
+}
+
 type FeaturedCandidate struct {
 	ID          int64  `json:"id"`
 	Title       string `json:"title"`
@@ -425,6 +432,60 @@ Write a specific, neutral title that accurately reflects the central event witho
 	if result.Title == "" || result.Summary == "" {
 		return Fields{}, errors.New("summary response is missing title or summary")
 	}
+	return result, nil
+}
+
+// ClassifyThread decides whether a public Threads post is news-relevant and
+// maps it to an existing feed category. A caller must provide a rule fallback
+// when the configured provider is unavailable.
+func (c Client) ClassifyThread(ctx context.Context, body string) (ThreadClassification, error) {
+	if c.URL == "" || c.APIKey == "" {
+		return ThreadClassification{}, errors.New("translation service is not configured")
+	}
+	if len(body) > 5000 {
+		body = body[:5000]
+	}
+	instruction := `You are a Vietnamese news editor. Decide whether this public Threads post is relevant factual news or useful current-affairs reporting. Reject personal chatter, giveaways, advertising, engagement bait, memes, celebrity/lifestyle, and posts with too little factual content. If relevant, select exactly one category from: technology, programming, world, business, society, culture, sports, education, health, science, ai, security, llm, cybersecurity. Return only JSON: {"relevant":true|false,"category":"one allowed slug"}.`
+	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": body}}, "temperature": 0, "stream": false, "response_format": map[string]string{"type": "json_object"}}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	endpoint, err := c.endpoint("chat/completions")
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(data)))
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return ThreadClassification{}, endpointError("Threads classification", res)
+	}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	content, err := completionContent(raw)
+	if err != nil {
+		return ThreadClassification{}, err
+	}
+	var result ThreadClassification
+	if err = json.Unmarshal([]byte(content), &result); err != nil {
+		return ThreadClassification{}, fmt.Errorf("decode Threads classification: %w", err)
+	}
+	result.Category = strings.TrimSpace(strings.ToLower(result.Category))
 	return result, nil
 }
 

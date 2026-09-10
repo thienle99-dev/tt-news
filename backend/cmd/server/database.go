@@ -39,13 +39,13 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql", "migrations/024_threads.sql", "migrations/025_threads_discovery.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
 			return err
 		}
-		if _, err = db.Exec(string(schema)); err != nil && !(name == "migrations/003_article_content_images.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/017_job_progress.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/020_article_content_extractor_version.sql" && strings.Contains(err.Error(), "duplicate column name")) {
+		if _, err = db.Exec(string(schema)); err != nil && !(name == "migrations/003_article_content_images.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/017_job_progress.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/020_article_content_extractor_version.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/025_threads_discovery.sql" && strings.Contains(err.Error(), "duplicate column name")) {
 			return err
 		}
 	}
@@ -63,10 +63,24 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE articles ADD COLUMN content_review_version TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE featured_topics ADD COLUMN why_it_matters TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE featured_topic_translations ADD COLUMN why_it_matters TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN thread_post_id TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN thread_author TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN thread_likes INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE articles ADD COLUMN thread_replies INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE articles ADD COLUMN thread_reposts INTEGER NOT NULL DEFAULT 0",
 	} {
 		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return err
 		}
+	}
+	// Logged-out Threads pages may expose JavaScript hydration data instead of
+	// a post caption. Run after compatibility columns have been added so this
+	// also works for databases created before Threads support existed.
+	if _, err = db.Exec(`DELETE FROM articles WHERE thread_post_id<>'' AND (
+		lower(description) LIKE '%bootstrapwebsession%' OR lower(description) LIKE '%cometssr%' OR
+		lower(description) LIKE '%qpltagserverjs%' OR lower(description) LIKE '%qpltimingsserverjs%' OR
+		lower(description) LIKE '%replacenativetimer%' OR lower(description) LIKE '%maybedisableanimations%')`); err != nil {
+		return err
 	}
 	// Fingerprints are filled for newly imported articles. Partial indexes let
 	// older rows remain untouched while protecting future imports.
@@ -205,6 +219,7 @@ func migrate(db *sql.DB) error {
 		// {Name: "China News Service – Photo", URL: "https://www.chinanews.com.cn/rss/photo.xml", Category: "culture", CountryCode: "CN", CountryName: "Trung Quốc"},
 	}
 	sources = append(sources, scmp.Feeds...)
+	sources = append(sources, rss.Source{Name: "Threads", URL: "https://www.threads.com", Category: "technology", CountryCode: "GLOBAL", CountryName: "Toàn cầu"})
 	if _, err = db.Exec(`UPDATE sources SET feed_url=? WHERE name=? AND feed_url=?`, "https://news.ycombinator.com/rss", "Hacker News", "https://hnrss.org/frontpage"); err != nil {
 		return err
 	}

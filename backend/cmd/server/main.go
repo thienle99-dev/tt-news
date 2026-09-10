@@ -75,6 +75,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	go app.runRSS(ctx)
+	go app.runThreads(ctx)
 	if cfg.AITranslateEnabled {
 		go app.runTranslationWorker(ctx)
 	} else {
@@ -197,6 +198,10 @@ func (s *server) routes() http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Use(jsonContent)
 		r.Get("/articles", s.listArticles)
+		r.Get("/threads", s.listThreads)
+		r.Get("/threads/targets", s.threadsTargets)
+		r.Get("/threads/authors", s.threadsAuthors)
+		r.Get("/threads/posts/{id}/image", s.threadImage)
 		r.Get("/articles/{id}", s.getArticle)
 		r.Get("/articles/{id}/related", s.relatedArticles)
 		r.Get("/categories", s.categories)
@@ -242,6 +247,13 @@ func (s *server) routes() http.Handler {
 		r.Use(s.requireAdmin)
 		r.Get("/status", s.adminStatus)
 		r.Post("/rss/fetch", s.adminFetchRSS)
+		r.Get("/threads/targets", s.adminThreadsTargets)
+		r.Post("/threads/targets", s.adminCreateThreadsTarget)
+		r.Patch("/threads/targets/{id}", s.adminUpdateThreadsTarget)
+		r.Delete("/threads/targets/{id}/posts", s.adminDeleteThreadsTargetPosts)
+		r.Delete("/threads/targets/{id}", s.adminDeleteThreadsTarget)
+		r.Post("/threads/fetch", s.adminFetchThreads)
+		r.Post("/threads/discover", s.adminDiscoverThreads)
 		r.Post("/translations/enqueue", s.adminEnqueueTranslations)
 		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
 		r.Delete("/jobs/{id}", s.adminCancelJob)
@@ -372,7 +384,8 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		args = append(args, language)
 	}
 	// A disabled source must not leak into the feed, even when its articles were
-	// imported before the source was disabled.
+	// imported before the source was disabled. Relevant Threads discovery posts
+	// now join the same public feed as RSS items.
 	where := []string{"s.enabled=1"}
 	if c := q.Get("category"); c != "" {
 		where = append(where, "EXISTS(SELECT 1 FROM article_categories ac JOIN categories article_category ON article_category.id=ac.category_id WHERE ac.article_id=a.id AND article_category.slug=?)")
@@ -439,7 +452,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	args = append(args, limit, offset)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id LEFT JOIN source_health h ON h.source_id=s.id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id LEFT JOIN source_health h ON h.source_id=s.id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -450,12 +463,13 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a article
 		var saved, read int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &saved, &read); e != nil {
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &a.ThreadPostID, &a.ThreadAuthor, &a.ThreadLikes, &a.ThreadReplies, &a.ThreadReposts, &a.ThreadClassification, &a.ThreadClassificationSource, &saved, &read); e != nil {
 			jsonErr(w, 500, "could not read articles")
 			return
 		}
 		a.IsSaved = saved == 1
 		a.IsRead = read == 1
+		s.wrapThreadImage(&a)
 		items = append(items, a)
 	}
 	if e = s.attachArticleCategoriesList(r.Context(), items); e != nil {
@@ -476,9 +490,9 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		args = append(args, u.ID, u.ID)
 	}
 	args = append(args, id)
-	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.full_content,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1`, saved, read)
+	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.full_content,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1`, saved, read)
 	var isSaved, isRead int
-	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.FullContent, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &isSaved, &isRead)
+	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.FullContent, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &a.ThreadPostID, &a.ThreadAuthor, &a.ThreadLikes, &a.ThreadReplies, &a.ThreadReposts, &a.ThreadClassification, &a.ThreadClassificationSource, &isSaved, &isRead)
 	if errors.Is(e, sql.ErrNoRows) {
 		jsonErr(w, 404, "article not found")
 		return
@@ -488,6 +502,7 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.ContentImages = decodeContentImages(imageJSON)
+	s.wrapThreadImage(&a)
 	a.IsSaved, a.IsRead = isSaved == 1, isRead == 1
 	if e = s.attachArticleCategories(r.Context(), &a); e != nil {
 		jsonErr(w, 500, "could not load article categories")
@@ -1208,7 +1223,7 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string, since time
 }
 
 func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, sourceIDs []int64, since time.Time) {
-	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business'`
+	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business' AND s.feed_url<>'https://www.threads.com'`
 	args := []any{}
 	if strings.TrimSpace(nameFilter) != "" {
 		query += " AND lower(s.name) LIKE ?"

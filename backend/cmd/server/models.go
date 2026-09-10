@@ -19,25 +19,32 @@ type source struct {
 }
 
 type article struct {
-	ID            int64             `json:"id"`
-	Title         string            `json:"title"`
-	Description   string            `json:"description"`
-	FullContent   string            `json:"original_content,omitempty"`
-	Summary       string            `json:"summary"`
-	URL           string            `json:"url"`
-	ImageURL      string            `json:"image_url"`
-	ContentImages []string          `json:"content_images"`
-	Source        string            `json:"source"`
-	SourceID      int64             `json:"source_id"`
-	CountryCode   string            `json:"country_code"`
-	CountryName   string            `json:"country_name"`
-	Category      string            `json:"category"`
-	Categories    []articleCategory `json:"categories"`
-	PublishedAt   string            `json:"published_at"`
-	IsSaved       bool              `json:"is_saved"`
-	IsRead        bool              `json:"is_read"`
-	FolderIDs     []int64           `json:"folder_ids,omitempty"`
-	TagIDs        []int64           `json:"tag_ids,omitempty"`
+	ID                         int64             `json:"id"`
+	Title                      string            `json:"title"`
+	Description                string            `json:"description"`
+	FullContent                string            `json:"original_content,omitempty"`
+	Summary                    string            `json:"summary"`
+	URL                        string            `json:"url"`
+	ImageURL                   string            `json:"image_url"`
+	ContentImages              []string          `json:"content_images"`
+	Source                     string            `json:"source"`
+	SourceID                   int64             `json:"source_id"`
+	CountryCode                string            `json:"country_code"`
+	CountryName                string            `json:"country_name"`
+	Category                   string            `json:"category"`
+	Categories                 []articleCategory `json:"categories"`
+	PublishedAt                string            `json:"published_at"`
+	IsSaved                    bool              `json:"is_saved"`
+	IsRead                     bool              `json:"is_read"`
+	FolderIDs                  []int64           `json:"folder_ids,omitempty"`
+	TagIDs                     []int64           `json:"tag_ids,omitempty"`
+	ThreadAuthor               string            `json:"thread_author,omitempty"`
+	ThreadPostID               string            `json:"-"`
+	ThreadLikes                int64             `json:"thread_likes,omitempty"`
+	ThreadReplies              int64             `json:"thread_replies,omitempty"`
+	ThreadReposts              int64             `json:"thread_reposts,omitempty"`
+	ThreadClassification       string            `json:"thread_classification,omitempty"`
+	ThreadClassificationSource string            `json:"thread_classification_source,omitempty"`
 }
 
 type articleCategory struct {

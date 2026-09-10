@@ -11,6 +11,7 @@ type config struct {
 	GoldRatesURL                                   string
 	AIURL, AIKey, AIModel                          string
 	RSSInterval, AuthMaxAge                        time.Duration
+	ThreadsInterval                                time.Duration
 	FeaturedBriefInterval, FeaturedBriefWindow     time.Duration
 	ContentCleanupInterval                         time.Duration
 	RSSContentUserAgent                            string
@@ -41,6 +42,7 @@ func loadConfig() config {
 		AITranslateLanguage:    env("AI_TRANSLATE_LANGUAGE", "Vietnamese"),
 		RSSTranslateVietnamese: env("RSS_TRANSLATE_VI", "true") == "true",
 		RSSInterval:            duration("RSS_FETCH_INTERVAL", 10*time.Minute),
+		ThreadsInterval:        duration("THREADS_FETCH_INTERVAL", 30*time.Minute),
 		FeaturedBriefInterval:  duration("FEATURED_BRIEF_INTERVAL", 6*time.Hour),
 		FeaturedBriefWindow:    duration("FEATURED_BRIEF_WINDOW", 24*time.Hour),
 		ContentCleanupInterval: duration("CONTENT_CLEANUP_INTERVAL", 24*time.Hour),

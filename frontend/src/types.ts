@@ -2,7 +2,9 @@ export type ArticleCategory = { slug: string; name: string }
 export type Article = {
   id: number; title: string; description: string; original_content?: string; summary: string; url: string; image_url: string; content_images: string[]
   source: string; source_id: number; country_code: string; country_name: string; category: string; categories: ArticleCategory[]; published_at: string; is_saved: boolean; is_read: boolean; folder_ids: number[]; tag_ids: number[]
+  thread_author?: string; thread_likes?: number; thread_replies?: number; thread_reposts?: number
 }
+export type ThreadsTarget = { id: number; kind: 'profile' | 'keyword'; query: string; enabled: boolean; last_fetch_at: string; last_success_at: string; last_error: string; last_inserted: number }
 export type Category = { id: number; slug: string; name: string }
 export type Source = { id: number; name: string; country_code: string; country_name: string }
 export type Country = { code: string; name: string }

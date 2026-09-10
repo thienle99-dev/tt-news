@@ -17,6 +17,7 @@ import type {
   SavedFilter,
   SavedFilterValues,
   Source,
+  ThreadsTarget,
 } from "./types";
 
 type Tab = "home" | "featured" | "saved" | "history" | "settings";
@@ -750,6 +751,7 @@ const HomeMasthead = memo(function HomeMasthead({
         <h1>{history ? t.history : saved ? t.saved : t.news}</h1>
       </div>
       <div className="header-actions">
+        <a className="text-button" href="/threads">Threads</a>
         <LanguagePicker locale={locale} setLocale={setLocale} />
         <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
         {refresh && <button type="button" className="theme-toggle refresh-news-button" aria-label={t.refreshNews} title={t.refreshNews} onClick={refresh} disabled={refreshing}>{refreshing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="history" />}</button>}
@@ -912,6 +914,7 @@ function Card({
         <div className="card-copy">
           <div className="eyebrow">
             {article.source}
+            {article.thread_author && <><span aria-hidden="true"> · </span><span className="thread-username">@{article.thread_author}</span></>}
             <span aria-hidden="true"> · </span>
             {country(article.country_code, article.country_name, locale)}
             <span aria-hidden="true"> · </span>
@@ -1513,6 +1516,25 @@ function Home({
     </section>
   );
 }
+function ThreadsPage({ locale, setLocale, theme, toggleTheme, openDetail }: { locale: Locale; setLocale: (locale: Locale) => void; theme: Theme; toggleTheme: () => void; openDetail: (article: Article) => void }) {
+  const [items, setItems] = useState<Article[]>([]);
+  const [targets, setTargets] = useState<ThreadsTarget[]>([]);
+  const [authors, setAuthors] = useState<string[]>([]);
+  const [target, setTarget] = useState("");
+  const [query, setQuery] = useState("");
+  const [username, setUsername] = useState("");
+  const [sort, setSort] = useState<"newest" | "engagement">("newest");
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  useEffect(() => { api.threadsTargets().then(setTargets).catch(() => {}); }, []);
+	useEffect(() => { api.threadsAuthors().then(setAuthors).catch(() => {}); }, []);
+  useEffect(() => { let active = true; setLoading(true); setFailed(false); const params = new URLSearchParams({ limit: "30", offset: String(offset), sort, ...(target && { target }), ...(query.trim() && { q: query.trim() }), ...(username.trim() && { username: username.trim() }) }); api.threads(params).then(next => { if (!active) return; setItems(current => offset === 0 ? next : [...current, ...next]); setHasMore(next.length === 30); }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [target, query, username, sort, offset]);
+  useEffect(() => { setOffset(0); }, [target, query, username, sort]);
+  const toggle = async (article: Article) => { setItems(current => current.map(item => item.id === article.id ? { ...item, is_saved: !item.is_saved } : item)); try { await api.toggleSaved(article); } catch { setItems(current => current.map(item => item.id === article.id ? { ...item, is_saved: article.is_saved } : item)); } };
+  return <section className="page editorial threads-page"><header className="masthead"><div><p>SIGNAL BRIEF / THREADS</p><h1>{locale === "vi" ? "Threads công khai" : "Public Threads"}</h1></div><div className="header-actions"><a className="text-button" href="/">{locale === "vi" ? "Tin tức" : "News"}</a><LanguagePicker locale={locale} setLocale={setLocale} /><ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} /></div></header><section className="filter-controls threads-filters" aria-label={locale === "vi" ? "Lọc Threads" : "Filter Threads"}><label><span>{locale === "vi" ? "Target" : "Target"}</span><select value={target} onChange={event => setTarget(event.target.value)}><option value="">{locale === "vi" ? "Tất cả" : "All targets"}</option>{targets.map(item => <option value={item.id} key={item.id}>{item.kind === "profile" ? "@" : "#"}{item.query}</option>)}</select></label><label><span>{locale === "vi" ? "Tìm post" : "Search posts"}</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={locale === "vi" ? "Nội dung" : "Post text"} /></label><label><span>Username</span><input type="search" list="threads-authors" value={username} onChange={event => setUsername(event.target.value)} placeholder={locale === "vi" ? "Chọn hoặc gõ username" : "Choose or search username"} autoComplete="off" /><datalist id="threads-authors">{authors.map(author => <option value={author} key={author}>@{author}</option>)}</datalist></label><label><span>{locale === "vi" ? "Sắp xếp" : "Sort"}</span><select value={sort} onChange={event => setSort(event.target.value as "newest" | "engagement")}><option value="newest">{locale === "vi" ? "Mới nhất" : "Newest"}</option><option value="engagement">{locale === "vi" ? "Tương tác cao" : "Top engagement"}</option></select></label></section>{loading && !items.length ? <p className="state" role="status">{text[locale].loading}</p> : failed ? <p className="state error">{text[locale].loadError}</p> : !items.length ? <p className="state">{locale === "vi" ? "Chưa có post Threads phù hợp." : "No matching Threads posts yet."}</p> : <div className="feed">{items.map(article => <div className="threads-card" key={article.id}><Card article={article} locale={locale} toggle={toggle} openDetail={openDetail} /><dl className="thread-engagement" aria-label={locale === "vi" ? "Tương tác" : "Engagement"}><div><dt>♥</dt><dd>{article.thread_likes ?? 0}</dd></div><div><dt>↩</dt><dd>{article.thread_replies ?? 0}</dd></div><div><dt>↻</dt><dd>{article.thread_reposts ?? 0}</dd></div></dl></div>)}{hasMore && <button className="text-button" onClick={() => setOffset(value => value + 30)} disabled={loading}>{loading ? text[locale].loading : (locale === "vi" ? "Xem thêm" : "Load more")}</button>}</div>}</section>
+}
 function Featured({
   locale,
   setLocale,
@@ -1889,7 +1911,7 @@ const BottomNavigation = memo(function BottomNavigation({
     ["settings", "settings", t.settings],
   ];
   return (
-    <nav aria-label="Primary navigation">
+    <nav className="bottom-navigation" aria-label="Primary navigation">
       {navItems.map(([id, icon, label]) => (
         <button
           className={tab === id ? "nav-active" : ""}
@@ -1907,6 +1929,28 @@ const BottomNavigation = memo(function BottomNavigation({
 });
 type AdminStatus = Awaited<ReturnType<typeof api.adminStatus>>;
 type AdminSource = AdminStatus["sources"][number];
+type AdminSection = "overview" | "ai" | "brief" | "jobs" | "usage" | "digest" | "sources" | "threads";
+
+const adminSections: { id: AdminSection; label: string }[] = [
+  { id: "overview", label: "Tổng quan" },
+  { id: "ai", label: "Cấu hình AI" },
+  { id: "brief", label: "Bản tin" },
+  { id: "jobs", label: "Jobs" },
+  { id: "usage", label: "AI usage" },
+  { id: "digest", label: "Telegram digest" },
+  { id: "sources", label: "RSS sources" },
+  { id: "threads", label: "Threads" },
+];
+const adminNavigationGroups: { label: string; items: AdminSection[] }[] = [
+  { label: "Vận hành", items: ["overview", "jobs"] },
+  { label: "AI", items: ["ai", "brief", "usage"] },
+  { label: "Phân phối", items: ["digest", "sources", "threads"] },
+];
+
+function adminSectionFromURL(): AdminSection {
+  const value = new URLSearchParams(window.location.search).get("section");
+  return adminSections.some(section => section.id === value) ? value as AdminSection : "overview";
+}
 
 function formatAdminTime(value: string) {
   if (!value) return "Chưa có";
@@ -2112,6 +2156,54 @@ function AdminSources({
   );
 }
 
+function AdminThreadsTargets({ token, action }: { token: string; action: (work: () => Promise<unknown>) => Promise<boolean> }) {
+  const [targets, setTargets] = useState<ThreadsTarget[]>([]);
+  const [targetTab, setTargetTab] = useState<"profile" | "keyword">("profile");
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => api.adminThreadsTargets(token).then(setTargets).catch(() => {});
+  useEffect(() => { if (token) load(); }, [token]);
+  const updateQuery = (value: string) => {
+    setQuery(value);
+    if (value.trimStart().startsWith("@")) setTargetTab("profile");
+    if (value.trimStart().startsWith("#")) setTargetTab("keyword");
+  };
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const raw = query.trim();
+    if (!raw || busy) return;
+    const kind = raw.startsWith("@") ? "profile" : raw.startsWith("#") ? "keyword" : targetTab;
+    const normalizedQuery = raw.replace(/^[@#]\s*/, "").trim();
+    if (!normalizedQuery) return;
+    setBusy(true);
+    const ok = await action(() => api.adminCreateThreadsTarget(token, { kind, query: normalizedQuery }));
+    if (ok) { setQuery(""); setTargetTab(kind); load(); }
+    setBusy(false);
+  };
+  const update = async (target: ThreadsTarget, enabled: boolean) => { setBusy(true); const ok = await action(() => api.adminUpdateThreadsTarget(token, target.id, { enabled })); if (ok) load(); setBusy(false); };
+  const remove = async (target: ThreadsTarget) => {
+    if (!window.confirm(`Xóa ${target.kind === "profile" ? "profile" : "keyword"} ${target.kind === "profile" ? "@" : "#"}${target.query}?`)) return;
+    setBusy(true);
+    const ok = await action(() => api.adminDeleteThreadsTarget(token, target.id));
+    if (ok) load();
+    setBusy(false);
+  };
+  const clearPosts = async (target: ThreadsTarget) => {
+    const targetName = `${target.kind === "profile" ? "@" : "#"}${target.query}`;
+    if (!window.confirm(`Xóa toàn bộ post Threads đã crawl cho ${targetName}? Target vẫn được giữ để crawl lại sau.`)) return;
+    setBusy(true);
+    const ok = await action(() => api.adminDeleteThreadsTargetPosts(token, target.id));
+    if (ok) load();
+    setBusy(false);
+  };
+  const run = async (id?: number) => { setBusy(true); const ok = await action(() => api.adminFetchThreads(token, id ? [id] : [])); if (ok) window.setTimeout(load, 500); setBusy(false); };
+  const discover = async () => { setBusy(true); const ok = await action(() => api.adminDiscoverThreads(token)); if (ok) window.setTimeout(load, 500); setBusy(false); };
+  const visibleTargets = targets.filter(target => target.kind === targetTab);
+  const profileCount = targets.filter(target => target.kind === "profile").length;
+  const keywordCount = targets.filter(target => target.kind === "keyword").length;
+  return <section className="settings-card threads-admin-card" aria-labelledby="threads-admin-title"><div className="admin-panel-heading"><div><small>THREADS</small><h2 id="threads-admin-title">Target crawl Threads</h2><p>Quản lý riêng profile công khai và keyword/hashtag. Crawler không yêu cầu đăng nhập.</p></div><div className="threads-admin-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => void discover()}>{busy ? "Đang chạy…" : "Tìm username mới"}</button><button type="button" className="secondary-button" disabled={busy} onClick={() => void run()}>{busy ? "Đang chạy…" : "Crawl tất cả"}</button></div></div><div className="threads-target-tabs" role="tablist" aria-label="Loại target Threads"><button type="button" role="tab" aria-selected={targetTab === "profile"} className={targetTab === "profile" ? "active" : ""} onClick={() => setTargetTab("profile")}>Profiles <span>{profileCount}</span></button><button type="button" role="tab" aria-selected={targetTab === "keyword"} className={targetTab === "keyword" ? "active" : ""} onClick={() => setTargetTab("keyword")}>Keywords <span>{keywordCount}</span></button></div><form className="threads-target-form" onSubmit={create}><label className="admin-field"><span>{targetTab === "profile" ? "USERNAME" : "KEYWORD / HASHTAG"}</span><input value={query} onChange={event => updateQuery(event.target.value)} placeholder={targetTab === "profile" ? "@zuck hoặc zuck" : "#AI hoặc AI"} autoComplete="off" /></label><button className="primary" disabled={!query.trim() || busy}>{busy ? "Đang thêm…" : `Thêm ${targetTab === "profile" ? "profile" : "keyword"}`}</button></form><p className="threads-target-hint">Nhập <strong>@username</strong> hoặc <strong>#keyword</strong> để tự chọn đúng loại target.</p><div className="threads-target-list" role="tabpanel">{visibleTargets.map(target => <article key={target.id}><div><strong>{target.kind === "profile" ? "@" : "#"}{target.query}</strong><small>{target.last_success_at ? `Crawl gần nhất ${formatAdminTime(target.last_success_at)}` : "Chưa crawl"}</small>{target.last_error && <p role="status">{target.last_error}</p>}</div><div><span>{target.last_inserted} mới</span><button type="button" className="text-button" disabled={busy} onClick={() => void run(target.id)}>Chạy</button><button type="button" className="text-button" disabled={busy} onClick={() => void update(target, !target.enabled)}>{target.enabled ? "Tắt" : "Bật"}</button><button type="button" className="text-button threads-target-delete-posts" disabled={busy} onClick={() => void clearPosts(target)}>Xóa post</button><button type="button" className="text-button threads-target-delete" disabled={busy} onClick={() => void remove(target)}>Xóa target</button></div></article>)}{!visibleTargets.length && <p className="admin-jobs-empty">Chưa có {targetTab === "profile" ? "profile" : "keyword"} Threads.</p>}</div></section>;
+}
+
 function AdminPage() {
   const [token, setToken] = useState(() => sessionStorage.getItem("admin-token") || "");
   const [status, setStatus] = useState<AdminStatus | null>(null);
@@ -2127,17 +2219,35 @@ function AdminPage() {
   const [featuredArticleCount, setFeaturedArticleCount] = useState(8);
   const [jobsPage, setJobsPage] = useState(1);
   const [jobsTab, setJobsTab] = useState<"running" | "completed" | "failed">("running");
+  const [section, setSection] = useState<AdminSection>(adminSectionFromURL);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const runningJobs = status?.jobs.filter(job => job.status === "running" || job.status === "queued").length ?? 0;
+  const sourcesWithIssues = status?.sources.filter(source => source.enabled && source.last_error).length ?? 0;
+  const enabledSources = status?.sources.filter(source => source.enabled).length ?? 0;
+  const selectSection = useCallback((next: AdminSection) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("section", next);
+    window.history.pushState(null, "", url);
+    setSection(next);
+  }, []);
+  useEffect(() => {
+    const onPopState = () => setSection(adminSectionFromURL());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const load = async (page = jobsPage) => {
     setBusy("load");
     try {
       const [next, aiConfig] = await Promise.all([api.adminStatus(token, page), api.adminAIConfig(token)]);
       sessionStorage.setItem("admin-token", token);
       setStatus(next);
+      setLastUpdated(new Date());
       setAIForm({ base_url: aiConfig.base_url, api_key: "", model: aiConfig.model });
       setAPIKeyConfigured(aiConfig.api_key_configured);
       setConfigSource(aiConfig.source);
       setError("");
     } catch (caught) {
+      setStatus(null);
       setError(caught instanceof Error ? caught.message : "Không thể tải dữ liệu hoặc token quản trị không hợp lệ.");
     } finally {
       setBusy("");
@@ -2232,10 +2342,20 @@ function AdminPage() {
       setError(caught instanceof Error ? caught.message : "Không thể tạo bản tin hằng ngày.");
     } finally { setBusy(""); }
   };
+  const fetchAllRSS = async () => {
+    setBusy("rss"); setError(""); setMessage("");
+    try {
+      const result = await api.adminFetchRSS(token);
+      setMessage(`Đã bắt đầu cập nhật ${result.source_count} nguồn RSS.`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể chạy RSS.");
+    } finally { setBusy(""); }
+  };
   useEffect(() => {
     if (!status || !token || (status.translation_queue === 0 && !status.jobs.some(job => job.status === "running"))) return;
     const refresh = window.setInterval(() => {
-      void api.adminStatus(token, jobsPage).then(setStatus).catch(() => {});
+      void api.adminStatus(token, jobsPage).then(next => { setStatus(next); setLastUpdated(new Date()); }).catch(() => {});
     }, 5_000);
     return () => window.clearInterval(refresh);
   }, [status, token, jobsPage]);
@@ -2247,11 +2367,11 @@ function AdminPage() {
             <div>
               <p className="section-kicker">SIGNAL BRIEF / ADMIN</p>
               <h1>Trung tâm vận hành</h1>
-              <p>Quản lý AI, tạo bản tin hằng ngày và theo dõi nguồn tin trong một không gian tập trung.</p>
+              <p>Theo dõi hệ thống, xử lý tác vụ và điều phối nội dung từ một workspace duy nhất.</p>
             </div>
-            {status && <span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span>}
+            {status && <div className="admin-hero-actions"><div><span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span>{lastUpdated && <span className="admin-last-updated">Cập nhật {lastUpdated.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>}</div><button type="button" className="secondary-button admin-refresh-button" disabled={busy === "load"} onClick={() => void load()}>{busy === "load" ? "Đang tải…" : "Làm mới"}</button></div>}
           </header>
-          <section className="admin-access-card" aria-labelledby="admin-access-title">
+          <section className={`admin-access-card${status ? " admin-access-card-loaded" : ""}`} aria-labelledby="admin-access-title">
             <div>
               <small>QUYỀN QUẢN TRỊ</small>
               <h2 id="admin-access-title">Mở dashboard</h2>
@@ -2260,7 +2380,7 @@ function AdminPage() {
             <form className="admin-login" onSubmit={event => { event.preventDefault(); void load(); }}>
               <label className="admin-field">
                 <span>ADMIN TOKEN</span>
-                <input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="current-password" />
+                <input type="password" value={token} onChange={event => { setToken(event.target.value); setStatus(null); }} autoComplete="current-password" />
               </label>
               <button className="primary" disabled={!token || busy === "load"}>
                 {busy === "load" ? "Đang tải…" : status ? "Làm mới dashboard" : "Tải dashboard"}
@@ -2270,8 +2390,14 @@ function AdminPage() {
           {error && <p className="admin-notice error" role="alert">{error}</p>}
           {message && <p className="admin-notice success" role="status" aria-live="polite">{message}</p>}
           {status && (
-            <div className="admin-workspace">
-              <section className="settings-card ai-config-card" aria-labelledby="ai-config-title">
+            <div className="admin-layout">
+              <nav className="admin-sidebar" aria-label="Điều hướng dashboard quản trị">
+                <div className="admin-sidebar-links">
+                  {adminNavigationGroups.map(group => <div className="admin-nav-group" key={group.label}><span>{group.label}</span>{group.label === "Vận hành" && <div className="admin-sidebar-status"><span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span><span className="admin-sidebar-jobs">{runningJobs ? `${runningJobs} job đang chạy` : "Không có job đang chạy"}</span></div>}{group.items.map(id => { const item = adminSections.find(candidate => candidate.id === id)!; return <button type="button" key={item.id} className={section === item.id ? "active" : ""} aria-current={section === item.id ? "page" : undefined} onClick={() => selectSection(item.id)}>{item.label}{item.id === "jobs" && runningJobs > 0 && <span className="admin-nav-badge">{runningJobs}</span>}</button>; })}</div>)}
+                </div>
+              </nav>
+              <div className="admin-workspace">
+              <section className="settings-card ai-config-card" aria-labelledby="ai-config-title" hidden={section !== "ai"}>
                 <div className="admin-panel-heading">
                   <div>
                     <small>CẤU HÌNH AI</small>
@@ -2326,8 +2452,7 @@ function AdminPage() {
                   )}
                 </form>
               </section>
-              <div className="admin-dashboard-grid">
-                <section className="settings-card featured-generator-card" aria-labelledby="featured-generator-title">
+              <section className="settings-card featured-generator-card" aria-labelledby="featured-generator-title" hidden={section !== "brief"}>
                 <small>BẢN TIN HẰNG NGÀY</small>
                 <h2 id="featured-generator-title">Tạo bản tin theo yêu cầu</h2>
                 <p>Chọn số lượng tin trước khi tạo. Bản tin được tạo nền từ các bài mới nhất trong 24 giờ qua.</p>
@@ -2347,28 +2472,32 @@ function AdminPage() {
                 </div>
                 {!status.ai.configured && <p className="featured-generator-note" role="status">Cần hoàn tất cấu hình AI trước khi tạo bản tin.</p>}
                 </section>
-                <section className="settings-card operations-card" aria-labelledby="operations-title">
+              <section className="settings-card operations-card" aria-labelledby="operations-title" hidden={section !== "overview"}>
                 <div className="admin-panel-heading operations-heading">
                   <div>
-                    <small>RSS & AI</small>
+                    <small>TỔNG QUAN</small>
                     <h2 id="operations-title">Tình trạng vận hành</h2>
-                    <p>Theo dõi hàng đợi xử lý và đầu ra của hệ thống tự động.</p>
+                    <p>Những tín hiệu cần xử lý và lối tắt đến các tác vụ quan trọng.</p>
                   </div>
-                  <span className={`config-badge ${status.ai.configured ? "configured" : ""}`}>{status.ai.configured ? "AI đang sẵn sàng" : "AI chưa sẵn sàng"}</span>
+                  <span className={`config-badge ${status.ai.configured ? "configured" : ""}`}>{status.ai.configured ? "AI đang sẵn sàng" : "Cần cấu hình AI"}</span>
                 </div>
                 <dl className="operations-metrics">
-                  <div><dt>Hàng đợi dịch</dt><dd>{status.translation_queue}</dd><small>Bài đang chờ xử lý</small></div>
-                  <div><dt>Bản dịch</dt><dd>{status.ai.translations_generated}</dd><small>Đã tạo</small></div>
+                  <div><dt>Hàng đợi dịch</dt><dd>{status.translation_queue}</dd><small>Bài chờ xử lý</small></div>
+                  <div><dt>Jobs đang chạy</dt><dd>{runningJobs}</dd><small>{runningJobs ? "Cần theo dõi" : "Không có tác vụ"}</small></div>
+                  <div><dt>Nguồn RSS</dt><dd>{enabledSources}</dd><small>{sourcesWithIssues ? `${sourcesWithIssues} nguồn có lỗi` : "Không có lỗi"}</small></div>
                   <div><dt>Featured brief</dt><dd>{status.ai.featured_briefs}</dd><small>Đã tạo</small></div>
-                  <div><dt>Phản hồi</dt><dd>{status.ai.feedback}</dd><small>Từ độc giả</small></div>
                 </dl>
                 <div className="operations-footer">
                   <p><strong>Model đang dùng</strong><span>{status.ai.model || "Chưa chọn model"}</span></p>
                   <p className="operations-note">{status.ai.cost_tracking}</p>
                 </div>
-                </section>
-              </div>
-              <section className="settings-card admin-jobs" aria-labelledby="admin-jobs-title">
+                <div className="admin-quick-actions" aria-label="Thao tác nhanh">
+                  <button type="button" className="primary" disabled={busy !== "" || !status.ai.configured} onClick={() => selectSection("brief")}>Tạo bản tin</button>
+                  <button type="button" className="secondary-button" disabled={busy !== ""} onClick={() => void fetchAllRSS()}>{busy === "rss" ? "Đang chạy RSS…" : "Cập nhật RSS"}</button>
+                  <button type="button" className="text-button" onClick={() => selectSection("jobs")}>Mở Jobs{runningJobs ? ` (${runningJobs})` : ""}</button>
+                </div>
+              </section>
+              <section className="settings-card admin-jobs" aria-labelledby="admin-jobs-title" hidden={section !== "jobs"}>
                   <div className="admin-jobs-heading">
                     <div>
                       <small>JOBS</small>
@@ -2397,11 +2526,11 @@ function AdminPage() {
                   ) : <p className="admin-jobs-empty">Không có tác vụ trong mục này.</p>; })()}
                   {status.jobs_total > status.jobs_page_size && <div className="jobs-pagination"><button type="button" className="secondary-button" disabled={status.jobs_page <= 1} onClick={() => { const page = status.jobs_page - 1; setJobsPage(page); void load(page); }}>Trước</button><span>Trang {status.jobs_page}/{Math.ceil(status.jobs_total / status.jobs_page_size)}</span><button type="button" className="secondary-button" disabled={status.jobs_page >= Math.ceil(status.jobs_total / status.jobs_page_size)} onClick={() => { const page = status.jobs_page + 1; setJobsPage(page); void load(page); }}>Sau</button></div>}
               </section>
-              <section className="settings-card usage-card" aria-labelledby="usage-title">
+              <section className="settings-card usage-card" aria-labelledby="usage-title" hidden={section !== "usage"}>
                 <small>AI USAGE</small><h2 id="usage-title">Token theo ngày</h2><p className="usage-period">7 ngày gần nhất</p>
                 {status.ai_usage.length ? (() => { const max = Math.max(1, ...status.ai_usage.map(item => item.total_tokens)); return <div className="usage-chart" role="img" aria-label="Biểu đồ token AI trong 7 ngày gần nhất">{status.ai_usage.map(item => <div className="usage-bar" key={item.day} aria-label={`${item.day}: ${item.total_tokens.toLocaleString()} token`}><span style={{ height: `${item.total_tokens === 0 ? 0 : Math.max(8, item.total_tokens / max * 100)}%` }} /><strong>{item.total_tokens.toLocaleString()}</strong><small>{item.day.slice(5)}</small></div>)}</div>; })() : <p className="admin-jobs-empty">Chưa có dữ liệu token. Dữ liệu được ghi nhận từ yêu cầu AI tiếp theo.</p>}
               </section>
-              <section className="settings-card digest-admin-card" aria-labelledby="digest-admin-title">
+              <section className="settings-card digest-admin-card" aria-labelledby="digest-admin-title" hidden={section !== "digest"}>
                 <small>TELEGRAM DIGEST</small><h2 id="digest-admin-title">Bản tin hằng ngày</h2><p>Gửi lúc 08:00 (giờ Việt Nam), chỉ tới người dùng đã bật và theo dõi ít nhất một chủ đề hoặc nguồn tin.</p>
                 <dl className="digest-admin-metrics">
                   <div><dt>Đăng ký</dt><dd>{status.daily_digest.subscribers}</dd></div>
@@ -2409,7 +2538,9 @@ function AdminPage() {
                   <div><dt>Gửi lỗi hôm nay</dt><dd>{status.daily_digest.failed_today}</dd></div>
                 </dl>
               </section>
-              <AdminSources sources={status.sources} token={token} action={action} />
+              <div hidden={section !== "sources"}><AdminSources sources={status.sources} token={token} action={action} /></div>
+              <div hidden={section !== "threads"}><AdminThreadsTargets token={token} action={action} /></div>
+              </div>
             </div>
           )}
         </section>
@@ -2530,6 +2661,7 @@ export default function App() {
   };
   const showingDetail = articleID !== null;
   const showingReader = route === "/reader";
+  const showingThreads = route === "/threads";
   return (
     <main>
       <a className="skip-link" href="#main-content">
@@ -2537,8 +2669,8 @@ export default function App() {
       </a>
       <div className="app-shell" id="main-content" tabIndex={-1}>
         <div
-          className={showingDetail || showingReader ? "listing-page hidden" : "listing-page"}
-          aria-hidden={showingDetail || showingReader}
+          className={showingDetail || showingReader || showingThreads ? "listing-page hidden" : "listing-page"}
+          aria-hidden={showingDetail || showingReader || showingThreads}
         >
           {tab === "home" && (
             <Home
@@ -2580,6 +2712,7 @@ export default function App() {
             <Settings locale={locale} setLocale={setLocale} openReader={openReader} autoSummarize={autoSummarize} setAutoSummarize={setAutoSummarize} />
           )}
         </div>
+        {showingThreads && !showingDetail && <ThreadsPage locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} openDetail={openDetail} />}
         {showingDetail &&
           (article ? (
             <Detail article={article} locale={locale} back={back} autoSummarize={autoSummarize} openDetail={openDetail} />
@@ -2603,7 +2736,7 @@ export default function App() {
           ))}
         {showingReader && <MediumReader locale={locale} back={backFromReader} />}
       </div>
-      {!showingDetail && !showingReader && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
+      {!showingDetail && !showingReader && !showingThreads && <BottomNavigation tab={tab} locale={locale} onSelect={setTab} />}
       <ScrollToTop locale={locale} compact={showingDetail || showingReader} />
     </main>
   );

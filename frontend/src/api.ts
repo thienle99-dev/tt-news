@@ -1,4 +1,4 @@
-import type { AIConfig, AIConfigInput, AIModel, Article, ArticleWatch, Category, Country, DailyDigestPreferences, FeaturedBrief, GoldRate, MediumReaderArticle, SavedCollection, SavedFilter, SavedFilterValues, SavedOrganization, Source, TelegramUser, Translation } from './types'
+import type { AIConfig, AIConfigInput, AIModel, Article, ArticleWatch, Category, Country, DailyDigestPreferences, FeaturedBrief, GoldRate, MediumReaderArticle, SavedCollection, SavedFilter, SavedFilterValues, SavedOrganization, Source, TelegramUser, ThreadsTarget, Translation } from './types'
 
 const initData = window.Telegram?.WebApp?.initData ?? ''
 const headers = (): HeadersInit => initData ? { Authorization: `tma ${initData}` } : {}
@@ -20,6 +20,16 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 export const api = {
 	readMedium: (url: string) => request<MediumReaderArticle>('/api/reader/articles', { method: 'POST', body: JSON.stringify({ url }), headers: { 'Content-Type': 'application/json' } }),
   articles: (params: URLSearchParams) => request<Article[]>(`/api/articles?${params}`),
+  threads: (params: URLSearchParams) => request<Article[]>(`/api/threads?${params}`),
+  threadsTargets: () => request<ThreadsTarget[]>('/api/threads/targets'),
+  threadsAuthors: () => request<string[]>('/api/threads/authors'),
+  adminThreadsTargets: (token: string) => request<ThreadsTarget[]>('/api/admin/threads/targets', adminOptions(token)),
+  adminCreateThreadsTarget: (token: string, input: { kind: 'profile' | 'keyword'; query: string; enabled?: boolean }) => request<{ id: number; enabled: boolean }>('/api/admin/threads/targets', adminOptions(token, 'POST', input)),
+  adminUpdateThreadsTarget: (token: string, id: number, input: { query?: string; enabled?: boolean }) => request<{ updated: boolean }>(`/api/admin/threads/targets/${id}`, adminOptions(token, 'PATCH', input)),
+  adminDeleteThreadsTarget: (token: string, id: number) => request<{ deleted: boolean }>(`/api/admin/threads/targets/${id}`, adminOptions(token, 'DELETE')),
+  adminDeleteThreadsTargetPosts: (token: string, id: number) => request<{ deleted: number }>(`/api/admin/threads/targets/${id}/posts`, adminOptions(token, 'DELETE')),
+  adminFetchThreads: (token: string, targetIDs: number[] = []) => request<{ status: string }>('/api/admin/threads/fetch', adminOptions(token, 'POST', { target_ids: targetIDs })),
+  adminDiscoverThreads: (token: string) => request<{ status: string; target_count: number }>('/api/admin/threads/discover', adminOptions(token, 'POST')),
   article: (id: number) => request<Article>(`/api/articles/${id}`),
 	relatedArticles: (id: number) => request<Article[]>(`/api/articles/${id}/related`),
 	translateVietnamese: (id: number) => request<Translation>(`/api/articles/${id}/translations/vi`, { method: 'POST' }),
