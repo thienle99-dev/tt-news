@@ -202,11 +202,14 @@ func (s *server) runDailyDigestIfDue(ctx context.Context, now time.Time, locatio
 	}
 }
 
-type dailyDigestArticle struct{ ID int64; Title, Source, PublishedAt string }
+type dailyDigestArticle struct {
+	ID                         int64
+	Title, Source, PublishedAt string
+}
 
 func (s *server) dailyDigestArticles(ctx context.Context, userID int64, since time.Time) ([]dailyDigestArticle, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.title,s.name,a.published_at FROM articles a JOIN sources s ON s.id=a.source_id
-		WHERE a.published_at>=? AND s.enabled=1 AND (
+		WHERE a.published_at>=? AND s.enabled=1 AND a.is_hidden=0 AND (
 		EXISTS(SELECT 1 FROM user_daily_digest_sources ds WHERE ds.user_id=? AND ds.source_id=a.source_id)
 		OR EXISTS(SELECT 1 FROM user_daily_digest_categories dc WHERE dc.user_id=? AND (dc.category_id=a.category_id OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id=dc.category_id)))
 		) ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, since.Format(time.RFC3339), userID, userID, dailyDigestLimit)

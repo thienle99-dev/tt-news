@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,18 +20,110 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const adminSessionCookie = "signal_brief_admin"
+const adminSessionLifetime = 24 * time.Hour
+
 // requireAdmin deliberately uses a separate secret from Telegram user auth.
 // Operations that change sources or trigger workers must never be available to
 // a regular Mini App user.
 func (s *server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		provided := r.Header.Get("X-Admin-Token")
-		if s.cfg.AdminToken == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(s.cfg.AdminToken)) != 1 {
+		if !s.isAdminRequest(r) {
 			jsonErr(w, http.StatusUnauthorized, "admin token is required")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *server) isAdminRequest(r *http.Request) bool {
+	if s.cfg.AdminToken == "" {
+		return false
+	}
+	provided := r.Header.Get("X-Admin-Token")
+	if provided != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(s.cfg.AdminToken)) == 1 {
+		return true
+	}
+	cookie, err := r.Cookie(adminSessionCookie)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 2 {
+		return false
+	}
+	expires, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || time.Now().Unix() > expires {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(s.cfg.AdminToken))
+	_, _ = mac.Write([]byte(parts[0]))
+	expected := mac.Sum(nil)
+	actual, err := hex.DecodeString(parts[1])
+	return err == nil && subtle.ConstantTimeCompare(actual, expected) == 1
+}
+
+func (s *server) adminLogin(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&input); err != nil || s.cfg.AdminToken == "" || subtle.ConstantTimeCompare([]byte(input.Token), []byte(s.cfg.AdminToken)) != 1 {
+		jsonErr(w, http.StatusUnauthorized, "invalid admin password")
+		return
+	}
+	expires := time.Now().Add(adminSessionLifetime)
+	mac := hmac.New(sha256.New, []byte(s.cfg.AdminToken))
+	_, _ = mac.Write([]byte(strconv.FormatInt(expires.Unix(), 10)))
+	http.SetCookie(w, &http.Cookie{Name: adminSessionCookie, Value: strconv.FormatInt(expires.Unix(), 10) + "." + hex.EncodeToString(mac.Sum(nil)), Path: "/", Expires: expires, MaxAge: int(adminSessionLifetime.Seconds()), HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.adminCookieSecure(r)})
+	jsonOut(w, http.StatusOK, map[string]any{"authenticated": true, "expires_at": expires.UTC().Format(time.RFC3339)})
+}
+
+func (s *server) adminLogout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: adminSessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.adminCookieSecure(r)})
+	jsonOut(w, http.StatusOK, map[string]bool{"authenticated": false})
+}
+
+func (s *server) adminSession(w http.ResponseWriter, r *http.Request) {
+	jsonOut(w, http.StatusOK, map[string]bool{"authenticated": s.isAdminRequest(r)})
+}
+
+// A Secure cookie is correct for HTTPS. When the app is accessed directly via
+// HTTP (for example /admin on a local port), browsers reject Secure cookies.
+// A TLS-terminating proxy communicates its original scheme in this header.
+func (s *server) adminCookieSecure(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func (s *server) adminSetArticleVisibility(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id < 1 {
+		jsonErr(w, http.StatusBadRequest, "invalid article id")
+		return
+	}
+	var input struct {
+		Hidden *bool `json:"hidden"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&input); err != nil || input.Hidden == nil {
+		jsonErr(w, http.StatusBadRequest, "hidden is required")
+		return
+	}
+	hidden := 0
+	hiddenAt := ""
+	if *input.Hidden {
+		hidden = 1
+		hiddenAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	result, err := s.db.ExecContext(r.Context(), `UPDATE articles SET is_hidden=?,hidden_at=? WHERE id=?`, hidden, hiddenAt, id)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, "could not update article visibility")
+		return
+	}
+	changed, _ := result.RowsAffected()
+	if changed == 0 {
+		jsonErr(w, http.StatusNotFound, "article not found")
+		return
+	}
+	jsonOut(w, http.StatusOK, map[string]bool{"hidden": *input.Hidden})
 }
 
 func (s *server) recordSourceHealth(ctx context.Context, sourceID int64, inserted int, fetchErr error) {
@@ -84,10 +179,10 @@ func (s *server) adminStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	counts := map[string]int64{}
 	for key, query := range map[string]string{
-		"translation_queue":      "SELECT count(*) FROM translation_jobs",
-		"translations_generated": "SELECT count(*) FROM article_translations",
-		"featured_briefs":        "SELECT count(*) FROM featured_briefs",
-		"ai_feedback":            "SELECT count(*) FROM article_ai_feedback",
+		"translation_queue":        "SELECT count(*) FROM translation_jobs",
+		"translations_generated":   "SELECT count(*) FROM article_translations",
+		"featured_briefs":          "SELECT count(*) FROM featured_briefs",
+		"ai_feedback":              "SELECT count(*) FROM article_ai_feedback",
 		"daily_digest_subscribers": "SELECT count(*) FROM user_daily_digests WHERE enabled=1",
 	} {
 		var count int64
@@ -337,7 +432,7 @@ func (s *server) adminUpdateSource(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "enabled is required")
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), "UPDATE sources SET enabled=? WHERE id=? AND category_id<>(SELECT id FROM categories WHERE slug='business')", *body.Enabled, chi.URLParam(r, "id"))
+	result, err := s.db.ExecContext(r.Context(), "UPDATE sources SET enabled=? WHERE id=?", *body.Enabled, chi.URLParam(r, "id"))
 	if err != nil {
 		jsonErr(w, 500, "could not update source")
 		return

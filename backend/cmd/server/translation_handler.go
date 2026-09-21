@@ -11,13 +11,19 @@ import (
 	translationservice "telegram-news/internal/translation"
 )
 
-func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
+func (s *server) translateArticle(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	language := chi.URLParam(r, "language")
+	if language != "vi" && language != "en" {
+		jsonErr(w, http.StatusBadRequest, "translation language must be vi or en")
+		return
+	}
+	targetLanguage := map[string]string{"vi": "Vietnamese", "en": "English"}[language]
 	s.translationMu.Lock()
 	defer s.translationMu.Unlock()
 
 	var translated translation
-	err := s.db.QueryRowContext(r.Context(), `SELECT title,description,summary FROM article_translations WHERE article_id=? AND language_code='vi'`, id).Scan(&translated.Title, &translated.Description, &translated.Summary)
+	err := s.db.QueryRowContext(r.Context(), `SELECT title,description,summary FROM article_translations WHERE article_id=? AND language_code=?`, id, language).Scan(&translated.Title, &translated.Description, &translated.Summary)
 	if err == nil {
 		jsonOut(w, http.StatusOK, translated)
 		return
@@ -37,14 +43,14 @@ func (s *server) translateVietnamese(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "could not load article")
 		return
 	}
-	fields, err := s.aiClient().Vietnamese(r.Context(), translationservice.Fields{Title: article.Title, Summary: article.Summary})
+	fields, err := s.aiClient().Translate(r.Context(), translationservice.Fields{Title: article.Title, Description: article.Description, Summary: article.Summary}, targetLanguage)
 	if err != nil {
 		log.Printf("translate article %d: %v", article.ID, err)
 		jsonErr(w, http.StatusServiceUnavailable, "could not translate article")
 		return
 	}
 	translated = translationResult(fields)
-	if _, err = s.db.ExecContext(r.Context(), `INSERT INTO article_translations(article_id,language_code,title,description,summary) VALUES(?,'vi',?,?,?)`, article.ID, translated.Title, translated.Description, translated.Summary); err != nil {
+	if _, err = s.db.ExecContext(r.Context(), `INSERT INTO article_translations(article_id,language_code,title,description,summary) VALUES(?,?,?,?,?)`, article.ID, language, translated.Title, translated.Description, translated.Summary); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not save translation")
 		return
 	}

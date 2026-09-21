@@ -18,9 +18,11 @@ import type {
   SavedFilterValues,
   Source,
   ThreadsTarget,
+	ThreadComment,
+  Translation,
 } from "./types";
 
-type Tab = "home" | "featured" | "saved" | "history" | "settings";
+type Tab = "home" | "featured" | "unread" | "saved" | "history" | "settings";
 type Locale = "en" | "vi";
 type Theme = "light" | "dark";
 type Filters = {
@@ -63,6 +65,7 @@ const text = {
     news: "Briefs",
     saved: "Saved",
     history: "Continue reading",
+		unread: "Unread",
     clearHistory: "Clear history",
     hideRead: "Hide read",
     showRead: "Show read",
@@ -182,6 +185,7 @@ const text = {
     news: "Tóm tắt",
     saved: "Đã lưu",
     history: "Đọc tiếp",
+		unread: "Chưa đọc",
     clearHistory: "Xoá lịch sử",
     hideRead: "Ẩn bài đã đọc",
     showRead: "Hiện bài đã đọc",
@@ -348,10 +352,12 @@ const publishedOn = (value: string, locale: Locale) =>
     month: "long",
     year: "numeric",
   }).format(new Date(value));
-const open = (url: string) =>
-  window.Telegram?.WebApp
-    ? window.Telegram.WebApp.openLink(url)
-    : window.open(url, "_blank", "noopener,noreferrer");
+const open = (url: string) => {
+  const destination = new URL(url, window.location.origin).toString();
+  return window.Telegram?.WebApp
+    ? window.Telegram.WebApp.openLink(destination)
+    : window.open(destination, "_blank", "noopener,noreferrer");
+};
 const articlePath = (article: Article) =>
   `/news/${article.id}-${
     article.title
@@ -380,7 +386,7 @@ const shareArticle = async (article: Article) => {
   window.open(telegramShareURL, "_blank", "noopener,noreferrer");
 };
 const articleIDFromPath = () => {
-  const match = window.location.pathname.match(/^\/news\/(\d+)(?:-|$)/);
+  const match = window.location.pathname.match(/^\/(?:news|thread)\/(\d+)(?:-|$)/);
   return match ? Number(match[1]) : null;
 };
 const textOnly = (value: string) =>
@@ -421,7 +427,11 @@ function Icon({
     | "share"
     | "bell"
     | "power"
-    | "play";
+    | "play"
+    | "heart"
+    | "message-circle"
+    | "repeat"
+    | "more-horizontal";
   filled?: boolean;
 }) {
   const common = {
@@ -466,6 +476,10 @@ function Icon({
     bell: <><path {...common} d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path {...common} d="M10 21h4" /></>,
     power: <><path {...common} d="M12 3v9" /><path {...common} d="M7.1 5.9a8 8 0 1 0 9.8 0" /></>,
     play: <path {...common} d="m9 6 9 6-9 6Z" />,
+		heart: <path {...common} d="M20.8 8.4c0 5.2-8.8 10.3-8.8 10.3S3.2 13.6 3.2 8.4A4.8 4.8 0 0 1 12 5.7a4.8 4.8 0 0 1 8.8 2.7Z" />,
+		"message-circle": <><path {...common} d="M20.5 11.5a8.5 8.5 0 0 1-9 8.5 9.3 9.3 0 0 1-3.7-.8L3.5 20.5l1.3-3.7A8.5 8.5 0 1 1 20.5 11.5Z" /></>,
+		repeat: <><path {...common} d="m17 2 4 4-4 4" /><path {...common} d="M3 6h18M7 22l-4-4 4-4" /><path {...common} d="M21 18H3" /></>,
+		"more-horizontal": <><circle {...common} cx="5" cy="12" r="1" /><circle {...common} cx="12" cy="12" r="1" /><circle {...common} cx="19" cy="12" r="1" /></>,
     settings: (
       <>
         <circle {...common} cx="12" cy="12" r="3" />
@@ -723,6 +737,7 @@ function ThemeToggle({ theme, toggle, locale }: { theme: Theme; toggle: () => vo
 const HomeMasthead = memo(function HomeMasthead({
   saved,
   history,
+  unread,
   locale,
   setLocale,
   theme,
@@ -734,6 +749,7 @@ const HomeMasthead = memo(function HomeMasthead({
 }: {
   saved?: boolean;
   history?: boolean;
+  unread?: boolean;
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
@@ -748,14 +764,14 @@ const HomeMasthead = memo(function HomeMasthead({
     <header className="masthead">
       <div>
         <p>{t.masthead}</p>
-        <h1>{history ? t.history : saved ? t.saved : t.news}</h1>
+        <h1>{history ? t.history : saved ? t.saved : unread ? t.unread : t.news}</h1>
       </div>
       <div className="header-actions">
         <a className="text-button" href="/threads">Threads</a>
         <LanguagePicker locale={locale} setLocale={setLocale} />
         <ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} />
         {refresh && <button type="button" className="theme-toggle refresh-news-button" aria-label={t.refreshNews} title={t.refreshNews} onClick={refresh} disabled={refreshing}>{refreshing ? <span className="loading-spinner" aria-hidden="true" /> : <Icon name="history" />}</button>}
-        {!saved && !history && <button className="text-button" onClick={toggleHideRead}>{hideRead ? t.showRead : t.hideRead}</button>}
+		{!saved && !history && !unread && <button className="text-button" onClick={toggleHideRead}>{hideRead ? t.showRead : t.hideRead}</button>}
       </div>
     </header>
   );
@@ -888,6 +904,8 @@ function Card({
   openDetail,
   selected,
   select,
+  onVisibilityChange,
+	onRead,
 }: {
   article: Article;
   hero?: boolean;
@@ -896,10 +914,21 @@ function Card({
   openDetail: (article: Article) => void;
   selected?: boolean;
   select?: (article: Article) => void;
+  onVisibilityChange?: (article: Article) => void;
+	onRead?: (article: Article) => void;
 }) {
   const t = text[locale];
+	const cardRef = useRef<HTMLElement | null>(null);
+	useEffect(() => {
+		if (!onRead || article.is_read || !cardRef.current) return;
+		const observer = new IntersectionObserver(entries => {
+			if (entries[0]?.isIntersecting) { observer.disconnect(); onRead(article); }
+		}, { threshold: 0.65 });
+		observer.observe(cardRef.current);
+		return () => observer.disconnect();
+	}, [article, onRead]);
   return (
-    <article className={hero ? "hero-card" : "news-card"}>
+	<article ref={cardRef} className={hero ? "hero-card" : "news-card"}>
       <button
         type="button"
         className="card-open"
@@ -945,6 +974,7 @@ function Card({
       >
         <Icon name="bookmark" filled={article.is_saved} />
       </button>
+	  {onVisibilityChange && <button type="button" className="text-button card-moderate" onClick={() => onVisibilityChange(article)}>{article.is_hidden ? "Khôi phục" : "Ẩn bài"}</button>}
       <button
         type="button"
         className="share"
@@ -1204,6 +1234,7 @@ function SavedFiltersBar({ locale, filter, setFilter, setSearch }: { locale: Loc
 function Home({
   saved,
   history,
+  unread,
   locale,
   setLocale,
   theme,
@@ -1212,6 +1243,7 @@ function Home({
 }: {
   saved?: boolean;
   history?: boolean;
+  unread?: boolean;
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
@@ -1236,6 +1268,9 @@ function Home({
   const [savedTag, setSavedTag] = useState("");
   const [savedSort, setSavedSort] = useState("saved_newest");
   const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
+	const [admin, setAdmin] = useState(false);
+	const [visibility, setVisibility] = useState<"visible" | "hidden">("visible");
+	useEffect(() => { api.adminSession().then(result => setAdmin(result.authenticated)).catch(() => {}); }, []);
   const toggleHideRead = useCallback(() => setHideRead(value => !value), []);
   const refreshNews = useCallback(() => { setOffset(0); setHasMore(true); setReload(value => value + 1); }, []);
   const t = text[locale];
@@ -1251,12 +1286,13 @@ function Home({
         ...(filter.query && { q: filter.query }),
         ...(!saved && filter.period && { period: filter.period }),
         ...(!saved && filter.sort && { sort: filter.sort }),
-        ...(hideRead && { hide_read: "1" }),
+		...((hideRead || unread) && { hide_read: "1" }),
         ...(saved && savedFolder && { folder: savedFolder }),
         ...(saved && savedTag && { tag: savedTag }),
         ...(saved && { sort: savedSort }),
+		...(admin && visibility === "hidden" && { visibility: "hidden" }),
       }),
-    [filter, hideRead, locale, offset, saved, savedFolder, savedTag, savedSort],
+	[admin, filter, hideRead, locale, offset, saved, savedFolder, savedTag, savedSort, unread, visibility],
   );
   useEffect(() => {
     const timer = window.setTimeout(
@@ -1402,7 +1438,11 @@ function Home({
       );
     }
   };
-  const hero = !saved && !history ? items[0] : undefined;
+	const changeVisibility = async (article: Article) => {
+	  try { await api.adminSetArticleVisibility(article.id, !article.is_hidden); setItems(current => current.filter(item => item.id !== article.id)); }
+	  catch { setError(true); }
+	};
+	const hero = !saved && !history && !unread ? items[0] : undefined;
   const list = hero ? items.slice(1) : items;
   const categoryOptions = [
     { value: "", label: t.allCategories },
@@ -1438,6 +1478,7 @@ function Home({
           categories={cats}
         />
       )}
+	  {admin && !saved && !history && <div className="admin-visibility-tabs" role="tablist" aria-label="Hiển thị bài viết"><button type="button" className={visibility === "visible" ? "active" : ""} onClick={() => setVisibility("visible")}>Công khai</button><button type="button" className={visibility === "hidden" ? "active" : ""} onClick={() => setVisibility("hidden")}>Đã ẩn</button></div>}
       {!saved && !history && <GoldRates locale={locale} />}
       {history && <button className="text-button" onClick={clearHistory}>{t.clearHistory}</button>}
       {saved && <section className="filter-controls" aria-label={t.saved}>
@@ -1472,6 +1513,7 @@ function Home({
                 locale={locale}
                 toggle={toggle}
                 openDetail={openDetail}
+				onVisibilityChange={admin && !saved && !history ? changeVisibility : undefined}
               />
             </>
           )}
@@ -1490,6 +1532,7 @@ function Home({
                 openDetail={openDetail}
                 selected={selectedIDs.includes(item.id)}
                 select={saved ? toggleSelected : undefined}
+				onVisibilityChange={admin && !saved && !history ? changeVisibility : undefined}
                 key={item.id}
               />
             ))}
@@ -1516,7 +1559,109 @@ function Home({
     </section>
   );
 }
-function ThreadsPage({ locale, setLocale, theme, toggleTheme, openDetail }: { locale: Locale; setLocale: (locale: Locale) => void; theme: Theme; toggleTheme: () => void; openDetail: (article: Article) => void }) {
+function ThreadAuthorMenu({ username, onDeleted, onVisibilityChange, hidden }: { username: string; onDeleted: (username: string) => void; onVisibilityChange?: () => void; hidden?: boolean }) {
+  const [openMenu, setOpenMenu] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const deletePosts = async () => {
+    setBusy(true); setFailed(false);
+    let postCount = 0;
+    try { postCount = (await api.adminThreadsAuthorModeration(username)).post_count; }
+    catch { setFailed(true); setBusy(false); return; }
+    if (!window.confirm(`Xóa vĩnh viễn ${postCount} bài của @${username}?`)) { setBusy(false); return; }
+    try { await api.adminDeleteThreadsAuthorPosts(username); onDeleted(username); setOpenMenu(false); }
+    catch { setFailed(true); } finally { setBusy(false); }
+  };
+  return <span className="thread-author-menu"><button type="button" className="thread-author-menu-trigger" aria-label={`Quản lý @${username}`} aria-expanded={openMenu} onClick={() => setOpenMenu(value => !value)}><Icon name="more-horizontal" /></button>{openMenu && <span className="thread-author-menu-popover"><span className="thread-author-menu-header">@{username}</span>{onVisibilityChange && <button type="button" className="thread-author-menu-item" onClick={() => { onVisibilityChange(); setOpenMenu(false); }}>{hidden ? "Khôi phục bài" : "Ẩn bài"}</button>}<button type="button" className="thread-author-menu-item thread-author-delete" disabled={busy} onClick={() => void deletePosts()}>Xóa toàn bộ bài</button>{failed && <span className="thread-author-menu-loading">Không thể thực hiện thao tác.</span>}</span>}</span>;
+}
+
+function ThreadFollowButton({ username, initiallyFollowing }: { username: string; initiallyFollowing: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [following, setFollowing] = useState(initiallyFollowing);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => { setFollowing(initiallyFollowing); setFailed(false); }, [username, initiallyFollowing]);
+
+  const follow = async () => {
+    setBusy(true); setFailed(false);
+    try {
+      await api.adminCreateThreadsTarget('', { kind: 'profile', query: username });
+      setFollowing(true);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Threads target already exists') setFollowing(true);
+      else setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <span className="thread-follow"><button type="button" className="thread-follow-button" disabled={busy || following} onClick={() => void follow()}>{following ? "Đang follow" : "Follow"}</button>{failed && <span className="thread-follow-error" role="alert">Không thể thực hiện thao tác.</span>}</span>;
+}
+
+function ThreadHideAuthorButton({ username, onHidden }: { username: string; onHidden: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const hide = async () => {
+    setBusy(true); setFailed(false);
+    try { await api.adminBlockThreadsAuthor(username); onHidden(); }
+    catch { setFailed(true); setBusy(false); }
+  };
+  return <span className="thread-hide-author"><button type="button" className="thread-hide-author-button" disabled={busy} onClick={() => void hide()}>{busy ? "Đang ẩn…" : "Ẩn"}</button>{failed && <span className="thread-follow-error" role="alert">Không thể thực hiện thao tác.</span>}</span>;
+}
+
+function ThreadComments({ articleID, locale, count }: { articleID: number; locale: Locale; count: number }) {
+  const [open, setOpen] = useState(false);
+  const [comments, setComments] = useState<ThreadComment[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setOpen(false); setComments(null); setLoading(false); setFailed(false); }, [articleID]);
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (comments !== null) return;
+    setLoading(true); setFailed(false);
+    try { setComments(await api.threadComments(articleID)); }
+    catch { setFailed(true); }
+    finally { setLoading(false); }
+  };
+  const label = locale === "vi" ? (open ? "Ẩn bình luận" : "Xem bình luận") : (open ? "Hide comments" : "View comments");
+  return <span className="thread-comments-wrap"><button type="button" className="thread-action" onClick={() => void toggle()} aria-expanded={open}><Icon name="message-circle" />{count} <span>{label}</span></button>{open && <section className="thread-comments" aria-label={locale === "vi" ? "Bình luận" : "Comments"}>{loading ? <p>Đang tải bình luận…</p> : failed ? <p className="thread-comments-error">Không thể tải bình luận.</p> : !comments?.length ? <p>Chưa có bình luận công khai.</p> : comments.map(comment => <article className="thread-comment" key={comment.id}><div className="thread-comment-meta"><strong>@{comment.author}</strong>{comment.display_name && <span>{comment.display_name}</span>}<time dateTime={comment.published_at}>{ago(comment.published_at, locale)}</time></div><p>{comment.body}</p>{comment.likes > 0 && <small><Icon name="heart" /> {comment.likes}</small>}</article>)}</section>}</span>;
+}
+
+function ThreadPost({ article, locale, onVisibilityChange, onAuthorDeleted, onRead, isFollowing }: { article: Article; locale: Locale; onVisibilityChange?: (article: Article) => void; onAuthorDeleted?: (username: string) => void; onRead?: (article: Article) => void; isFollowing?: boolean }) {
+  const username = article.thread_author || "threads";
+  const displayName = article.thread_display_name?.trim();
+	const [translation, setTranslation] = useState<Translation | null>(null);
+	const [translating, setTranslating] = useState(false);
+	const [translationFailed, setTranslationFailed] = useState(false);
+	const postRef = useRef<HTMLElement | null>(null);
+	useEffect(() => { setTranslation(null); setTranslationFailed(false); }, [article.id, locale]);
+	useEffect(() => {
+		if (!onRead || article.is_read || !postRef.current) return;
+		const observer = new IntersectionObserver(entries => { if (entries[0]?.isIntersecting) { observer.disconnect(); onRead(article); } }, { threshold: 0.65 });
+		observer.observe(postRef.current);
+		return () => observer.disconnect();
+	}, [article, onRead]);
+	const translate = async () => {
+	  setTranslating(true); setTranslationFailed(false);
+	  try { setTranslation(await api.translateArticle(article.id, locale)); }
+	  catch { setTranslationFailed(true); } finally { setTranslating(false); }
+	};
+  return <article ref={postRef} className="thread-post">
+    <header className="thread-post-header">
+      {article.thread_avatar_url ? <img className="thread-avatar" src={article.thread_avatar_url} alt="" /> : <span className="thread-avatar thread-avatar-fallback" aria-hidden="true">{username.slice(0, 1).toUpperCase()}</span>}
+      <div className="thread-post-main">
+        <div className="thread-post-meta"><strong>@{username}</strong>{onAuthorDeleted && <><ThreadFollowButton username={username} initiallyFollowing={Boolean(isFollowing)} /><ThreadHideAuthorButton username={username} onHidden={() => onAuthorDeleted(username)} /></>}<time dateTime={article.published_at}>{ago(article.published_at, locale)}</time></div>
+        {displayName && displayName.toLowerCase() !== username.toLowerCase() && <p className="thread-display-name">{displayName}</p>}
+        <div className="thread-post-content"><p>{translation?.description || translation?.title || article.description || article.title}</p></div>
+        {article.image_url && <div className="thread-media"><img src={article.image_url} alt="" /></div>}
+        <div className="thread-post-bottom"><ArticleCategories article={article} locale={locale} /><div className="thread-actions" aria-label={locale === "vi" ? "Tương tác bài viết" : "Post interactions"}><span className="thread-action"><Icon name="heart" />{article.thread_likes ?? 0}</span><ThreadComments articleID={article.id} locale={locale} count={article.thread_replies ?? 0} /><span className="thread-action"><Icon name="repeat" />{article.thread_reposts ?? 0}</span><button type="button" className="thread-action" onClick={() => void translate()} disabled={translating}>{translating ? (locale === "vi" ? "Đang dịch…" : "Translating…") : (locale === "vi" ? "Dịch" : "Translate")}</button><button type="button" className="thread-action" onClick={() => void shareArticle(article)} aria-label={`${locale === "vi" ? "Chia sẻ" : "Share"}: ${article.title}`}><Icon name="share" /></button><a className="thread-action thread-action-original" href={article.url} onClick={event => { event.preventDefault(); open(article.url); }}>Mở trên Threads <Icon name="arrow-up-right" /></a>{onAuthorDeleted && <ThreadAuthorMenu username={username} onDeleted={onAuthorDeleted} onVisibilityChange={onVisibilityChange ? () => onVisibilityChange(article) : undefined} hidden={article.is_hidden} />}</div>{translationFailed && <small className="thread-translation-error">{locale === "vi" ? "Không thể dịch post này." : "Could not translate this post."}</small>}</div>
+      </div>
+    </header>
+  </article>;
+}
+
+function ThreadsPage({ locale, setLocale, theme, toggleTheme }: { locale: Locale; setLocale: (locale: Locale) => void; theme: Theme; toggleTheme: () => void }) {
   const [items, setItems] = useState<Article[]>([]);
   const [targets, setTargets] = useState<ThreadsTarget[]>([]);
   const [authors, setAuthors] = useState<string[]>([]);
@@ -1528,12 +1673,34 @@ function ThreadsPage({ locale, setLocale, theme, toggleTheme, openDetail }: { lo
   const [failed, setFailed] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+	const [unread, setUnread] = useState(() => new URLSearchParams(window.location.search).get("unread") === "1");
+	const selectUnread = (next: boolean) => {
+		const url = new URL(window.location.href);
+		if (next) url.searchParams.set("unread", "1"); else url.searchParams.delete("unread");
+		window.history.pushState({}, "", url);
+		setUnread(next);
+	};
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+	const [admin, setAdmin] = useState(false);
+	const [visibility, setVisibility] = useState<"visible" | "hidden">("visible");
+	useEffect(() => { api.adminSession().then(result => setAdmin(result.authenticated)).catch(() => {}); }, []);
   useEffect(() => { api.threadsTargets().then(setTargets).catch(() => {}); }, []);
 	useEffect(() => { api.threadsAuthors().then(setAuthors).catch(() => {}); }, []);
-  useEffect(() => { let active = true; setLoading(true); setFailed(false); const params = new URLSearchParams({ limit: "30", offset: String(offset), sort, ...(target && { target }), ...(query.trim() && { q: query.trim() }), ...(username.trim() && { username: username.trim() }) }); api.threads(params).then(next => { if (!active) return; setItems(current => offset === 0 ? next : [...current, ...next]); setHasMore(next.length === 30); }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [target, query, username, sort, offset]);
-  useEffect(() => { setOffset(0); }, [target, query, username, sort]);
-  const toggle = async (article: Article) => { setItems(current => current.map(item => item.id === article.id ? { ...item, is_saved: !item.is_saved } : item)); try { await api.toggleSaved(article); } catch { setItems(current => current.map(item => item.id === article.id ? { ...item, is_saved: article.is_saved } : item)); } };
-  return <section className="page editorial threads-page"><header className="masthead"><div><p>SIGNAL BRIEF / THREADS</p><h1>{locale === "vi" ? "Threads công khai" : "Public Threads"}</h1></div><div className="header-actions"><a className="text-button" href="/">{locale === "vi" ? "Tin tức" : "News"}</a><LanguagePicker locale={locale} setLocale={setLocale} /><ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} /></div></header><section className="filter-controls threads-filters" aria-label={locale === "vi" ? "Lọc Threads" : "Filter Threads"}><label><span>{locale === "vi" ? "Target" : "Target"}</span><select value={target} onChange={event => setTarget(event.target.value)}><option value="">{locale === "vi" ? "Tất cả" : "All targets"}</option>{targets.map(item => <option value={item.id} key={item.id}>{item.kind === "profile" ? "@" : "#"}{item.query}</option>)}</select></label><label><span>{locale === "vi" ? "Tìm post" : "Search posts"}</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={locale === "vi" ? "Nội dung" : "Post text"} /></label><label><span>Username</span><input type="search" list="threads-authors" value={username} onChange={event => setUsername(event.target.value)} placeholder={locale === "vi" ? "Chọn hoặc gõ username" : "Choose or search username"} autoComplete="off" /><datalist id="threads-authors">{authors.map(author => <option value={author} key={author}>@{author}</option>)}</datalist></label><label><span>{locale === "vi" ? "Sắp xếp" : "Sort"}</span><select value={sort} onChange={event => setSort(event.target.value as "newest" | "engagement")}><option value="newest">{locale === "vi" ? "Mới nhất" : "Newest"}</option><option value="engagement">{locale === "vi" ? "Tương tác cao" : "Top engagement"}</option></select></label></section>{loading && !items.length ? <p className="state" role="status">{text[locale].loading}</p> : failed ? <p className="state error">{text[locale].loadError}</p> : !items.length ? <p className="state">{locale === "vi" ? "Chưa có post Threads phù hợp." : "No matching Threads posts yet."}</p> : <div className="feed">{items.map(article => <div className="threads-card" key={article.id}><Card article={article} locale={locale} toggle={toggle} openDetail={openDetail} /><dl className="thread-engagement" aria-label={locale === "vi" ? "Tương tác" : "Engagement"}><div><dt>♥</dt><dd>{article.thread_likes ?? 0}</dd></div><div><dt>↩</dt><dd>{article.thread_replies ?? 0}</dd></div><div><dt>↻</dt><dd>{article.thread_reposts ?? 0}</dd></div></dl></div>)}{hasMore && <button className="text-button" onClick={() => setOffset(value => value + 30)} disabled={loading}>{loading ? text[locale].loading : (locale === "vi" ? "Xem thêm" : "Load more")}</button>}</div>}</section>
+	useEffect(() => { let active = true; setLoading(true); setFailed(false); const params = new URLSearchParams({ limit: "30", offset: String(offset), sort, ...(target && { target }), ...(query.trim() && { q: query.trim() }), ...(username.trim() && { username: username.trim() }), ...(unread && { unread: "1" }), ...(admin && visibility === "hidden" && { visibility: "hidden" }) }); api.threads(params).then(next => { if (!active) return; setItems(current => offset === 0 ? next : [...current, ...next]); setHasMore(next.length === 30); }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, [target, query, username, sort, offset, admin, unread, visibility]);
+	useEffect(() => { setOffset(0); }, [target, query, username, sort, unread, visibility]);
+	useEffect(() => {
+		const node = loadMoreRef.current;
+		if (!node || !hasMore || loading) return;
+		const observer = new IntersectionObserver(entries => {
+			if (entries[0]?.isIntersecting) setOffset(current => current + 30);
+		}, { rootMargin: "420px 0px" });
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, [hasMore, loading, offset]);
+	const changeVisibility = async (article: Article) => { try { await api.adminSetArticleVisibility(article.id, !article.is_hidden); setItems(current => current.filter(item => item.id !== article.id)); } catch { setFailed(true); } };
+	const removeAuthor = (author: string) => setItems(current => current.filter(item => item.thread_author?.toLowerCase() !== author.toLowerCase()));
+	const markReadOnView = useCallback((article: Article) => { setItems(current => current.map(item => item.id === article.id ? { ...item, is_read: true } : item)); void api.markRead(article.id).catch(() => setItems(current => current.map(item => item.id === article.id ? { ...item, is_read: false } : item))); }, []);
+  return <section className="page editorial threads-page"><header className="masthead"><div><p>SIGNAL BRIEF / THREADS</p><h1>{locale === "vi" ? "Threads công khai" : "Public Threads"}</h1></div><div className="header-actions"><a className="text-button" href="/">{locale === "vi" ? "Tin tức" : "News"}</a><LanguagePicker locale={locale} setLocale={setLocale} /><ThemeToggle theme={theme} toggle={toggleTheme} locale={locale} /></div></header><section className="filter-controls threads-filters" aria-label={locale === "vi" ? "Lọc Threads" : "Filter Threads"}><label><span>{locale === "vi" ? "Target" : "Target"}</span><select value={target} onChange={event => setTarget(event.target.value)}><option value="">{locale === "vi" ? "Tất cả" : "All targets"}</option>{targets.map(item => <option value={item.id} key={item.id}>{item.kind === "profile" ? "@" : "#"}{item.query}</option>)}</select></label><label className="threads-search"><span>{locale === "vi" ? "Tìm post" : "Search posts"}</span><div className="threads-input-wrap"><span aria-hidden="true">⌕</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={locale === "vi" ? "Tìm nội dung..." : "Search posts..."} /></div></label><label><span>Username</span><div className="threads-input-wrap"><span aria-hidden="true">@</span><input type="search" list="threads-authors" value={username} onChange={event => setUsername(event.target.value)} placeholder="username" autoComplete="off" /></div><datalist id="threads-authors">{authors.map(author => <option value={author} key={author}>@{author}</option>)}</datalist></label><label><span>{locale === "vi" ? "Sắp xếp" : "Sort"}</span><select value={sort} onChange={event => setSort(event.target.value as "newest" | "engagement")}><option value="newest">{locale === "vi" ? "Mới nhất" : "Newest"}</option><option value="engagement">{locale === "vi" ? "Tương tác cao" : "Top engagement"}</option></select></label></section><div className="threads-read-tabs" role="tablist" aria-label={locale === "vi" ? "Trạng thái đọc" : "Reading status"}><button type="button" className={!unread ? "active" : ""} onClick={() => selectUnread(false)}>{locale === "vi" ? "Tất cả" : "All"}</button><button type="button" className={unread ? "active" : ""} onClick={() => selectUnread(true)}>{locale === "vi" ? "Chưa đọc" : "Unread"}</button></div>{admin && <div className="admin-visibility-tabs" role="tablist" aria-label="Hiển thị Threads"><button type="button" className={visibility === "visible" ? "active" : ""} onClick={() => setVisibility("visible")}>Công khai</button><button type="button" className={visibility === "hidden" ? "active" : ""} onClick={() => setVisibility("hidden")}>Đã ẩn</button></div>}{loading && !items.length ? <p className="state" role="status">{text[locale].loading}</p> : failed ? <p className="state error">{text[locale].loadError}</p> : !items.length ? <p className="state">{locale === "vi" ? "Chưa có post Threads phù hợp." : "No matching Threads posts yet."}</p> : <div className="threads-feed">{items.map(article => <ThreadPost article={article} locale={locale} onVisibilityChange={admin ? changeVisibility : undefined} onAuthorDeleted={admin ? removeAuthor : undefined} onRead={markReadOnView} isFollowing={targets.some(item => item.kind === "profile" && item.query.trim().toLowerCase() === (article.thread_author || "threads").trim().toLowerCase())} key={article.id} />)}{hasMore && <div ref={loadMoreRef} className="threads-load-more state" role="status">{loading ? text[locale].loading : (locale === "vi" ? "Đang tải thêm…" : "Loading more…")}</div>}</div>}</section>
 }
 function Featured({
   locale,
@@ -2162,7 +2329,9 @@ function AdminThreadsTargets({ token, action }: { token: string; action: (work: 
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const load = () => api.adminThreadsTargets(token).then(setTargets).catch(() => {});
-  useEffect(() => { if (token) load(); }, [token]);
+  // Authentication is cookie-based now, so the in-memory password is empty
+  // after a successful login. Always load; the server enforces the session.
+  useEffect(() => { load(); }, [token]);
   const updateQuery = (value: string) => {
     setQuery(value);
     if (value.trimStart().startsWith("@")) setTargetTab("profile");
@@ -2205,7 +2374,8 @@ function AdminThreadsTargets({ token, action }: { token: string; action: (work: 
 }
 
 function AdminPage() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("admin-token") || "");
+  const [token, setToken] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [aiForm, setAIForm] = useState<AIConfigInput>({ base_url: "", api_key: "", model: "" });
   const [apiKeyConfigured, setAPIKeyConfigured] = useState(false);
@@ -2239,20 +2409,28 @@ function AdminPage() {
     setBusy("load");
     try {
       const [next, aiConfig] = await Promise.all([api.adminStatus(token, page), api.adminAIConfig(token)]);
-      sessionStorage.setItem("admin-token", token);
-      setStatus(next);
+	  setStatus(next);
       setLastUpdated(new Date());
       setAIForm({ base_url: aiConfig.base_url, api_key: "", model: aiConfig.model });
       setAPIKeyConfigured(aiConfig.api_key_configured);
       setConfigSource(aiConfig.source);
       setError("");
     } catch (caught) {
-      setStatus(null);
+	  setStatus(null);
+	  setAuthenticated(false);
       setError(caught instanceof Error ? caught.message : "Không thể tải dữ liệu hoặc token quản trị không hợp lệ.");
     } finally {
       setBusy("");
     }
   };
+	useEffect(() => { let active = true; api.adminSession().then(session => { if (!active) return; setAuthenticated(session.authenticated); if (session.authenticated) void load(); }).catch(() => {}); return () => { active = false; }; }, []);
+	const login = async () => {
+	  setBusy("load"); setError("");
+	  try { await api.adminLogin(token); setToken(""); setAuthenticated(true); await load(); }
+	  catch (caught) { setAuthenticated(false); setError(caught instanceof Error ? caught.message : "Không thể đăng nhập quản trị."); }
+	  finally { setBusy(""); }
+	};
+	const logout = async () => { await api.adminLogout().catch(() => {}); setAuthenticated(false); setStatus(null); setToken(""); };
   const action = async (work: () => Promise<unknown>) => {
     try {
       await work();
@@ -2353,12 +2531,12 @@ function AdminPage() {
     } finally { setBusy(""); }
   };
   useEffect(() => {
-    if (!status || !token || (status.translation_queue === 0 && !status.jobs.some(job => job.status === "running"))) return;
+	if (!status || !authenticated || (status.translation_queue === 0 && !status.jobs.some(job => job.status === "running"))) return;
     const refresh = window.setInterval(() => {
       void api.adminStatus(token, jobsPage).then(next => { setStatus(next); setLastUpdated(new Date()); }).catch(() => {});
     }, 5_000);
     return () => window.clearInterval(refresh);
-  }, [status, token, jobsPage]);
+  }, [status, authenticated, jobsPage]);
   return (
     <main className="admin-shell">
       <div className="app-shell">
@@ -2369,21 +2547,21 @@ function AdminPage() {
               <h1>Trung tâm vận hành</h1>
               <p>Theo dõi hệ thống, xử lý tác vụ và điều phối nội dung từ một workspace duy nhất.</p>
             </div>
-            {status && <div className="admin-hero-actions"><div><span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span>{lastUpdated && <span className="admin-last-updated">Cập nhật {lastUpdated.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>}</div><button type="button" className="secondary-button admin-refresh-button" disabled={busy === "load"} onClick={() => void load()}>{busy === "load" ? "Đang tải…" : "Làm mới"}</button></div>}
+			{status && <div className="admin-hero-actions"><div><span className={`admin-readiness ${status.ai.configured ? "ready" : ""}`}>{status.ai.configured ? "AI sẵn sàng" : "Cần cấu hình AI"}</span>{lastUpdated && <span className="admin-last-updated">Cập nhật {lastUpdated.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>}</div><button type="button" className="secondary-button admin-refresh-button" disabled={busy === "load"} onClick={() => void load()}>{busy === "load" ? "Đang tải…" : "Làm mới"}</button><button type="button" className="text-button" onClick={() => void logout()}>Đăng xuất</button></div>}
           </header>
           <section className={`admin-access-card${status ? " admin-access-card-loaded" : ""}`} aria-labelledby="admin-access-title">
             <div>
               <small>QUYỀN QUẢN TRỊ</small>
-              <h2 id="admin-access-title">Mở dashboard</h2>
-              <p>Nhập admin token để tải dữ liệu vận hành mới nhất.</p>
+			  <h2 id="admin-access-title">{authenticated ? "Phiên quản trị đang hoạt động" : "Đăng nhập dashboard"}</h2>
+			  <p>{authenticated ? "Phiên này tự hết hạn sau 24 giờ." : "Nhập mật khẩu quản trị để mở phiên an toàn trong 24 giờ."}</p>
             </div>
-            <form className="admin-login" onSubmit={event => { event.preventDefault(); void load(); }}>
+			<form className="admin-login" onSubmit={event => { event.preventDefault(); void (authenticated ? load() : login()); }}>
               <label className="admin-field">
-                <span>ADMIN TOKEN</span>
-                <input type="password" value={token} onChange={event => { setToken(event.target.value); setStatus(null); }} autoComplete="current-password" />
+				<span>ADMIN PASSWORD</span>
+				<input type="password" value={token} onChange={event => { setToken(event.target.value); setStatus(null); }} autoComplete="current-password" disabled={authenticated} />
               </label>
-              <button className="primary" disabled={!token || busy === "load"}>
-                {busy === "load" ? "Đang tải…" : status ? "Làm mới dashboard" : "Tải dashboard"}
+			  <button className="primary" disabled={(!token && !authenticated) || busy === "load"}>
+				{busy === "load" ? "Đang tải…" : authenticated ? "Làm mới dashboard" : "Đăng nhập"}
               </button>
             </form>
           </section>
@@ -2712,7 +2890,7 @@ export default function App() {
             <Settings locale={locale} setLocale={setLocale} openReader={openReader} autoSummarize={autoSummarize} setAutoSummarize={setAutoSummarize} />
           )}
         </div>
-        {showingThreads && !showingDetail && <ThreadsPage locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} openDetail={openDetail} />}
+        {showingThreads && !showingDetail && <ThreadsPage locale={locale} setLocale={setLocale} theme={theme} toggleTheme={toggleTheme} />}
         {showingDetail &&
           (article ? (
             <Detail article={article} locale={locale} back={back} autoSummarize={autoSummarize} openDetail={openDetail} />

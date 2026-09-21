@@ -39,7 +39,7 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql", "migrations/024_threads.sql", "migrations/025_threads_discovery.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql", "migrations/024_threads.sql", "migrations/025_threads_discovery.sql", "migrations/026_threads_author_blocks.sql", "migrations/027_threads_comments.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
@@ -65,9 +65,13 @@ func migrate(db *sql.DB) error {
 		"ALTER TABLE featured_topic_translations ADD COLUMN why_it_matters TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN thread_post_id TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN thread_author TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN thread_display_name TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE articles ADD COLUMN thread_avatar_url TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE articles ADD COLUMN thread_likes INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE articles ADD COLUMN thread_replies INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE articles ADD COLUMN thread_reposts INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE articles ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE articles ADD COLUMN hidden_at TEXT NOT NULL DEFAULT ''",
 	} {
 		if _, err = db.Exec(statement); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return err
@@ -176,6 +180,64 @@ func migrate(db *sql.DB) error {
 		{Name: "Wccftech", URL: "https://wccftech.com/feed/", Category: "technology", CountryCode: "CA", CountryName: "Canada"},
 		{Name: "BGR", URL: "https://bgr.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		{Name: "9to5Google", URL: "https://9to5google.com/feed/", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "CafeF – Tổng hợp", URL: "https://cafef.vn/home.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Chứng khoán", URL: "https://cafef.vn/thi-truong-chung-khoan.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Doanh nghiệp", URL: "https://cafef.vn/doanh-nghiep.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Tài chính - Ngân hàng", URL: "https://cafef.vn/tai-chinh-ngan-hang.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Bất động sản", URL: "https://cafef.vn/bat-dong-san.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Thị trường", URL: "https://cafef.vn/thi-truong.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Vĩ mô - Đầu tư", URL: "https://cafef.vn/vi-mo-dau-tu.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Tài chính quốc tế", URL: "https://cafef.vn/tai-chinh-quoc-te.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Smart Money", URL: "https://cafef.vn/smart-money.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Kinh tế số", URL: "https://cafef.vn/kinh-te-so.rss", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "CafeF – Lifestyle", URL: "https://cafef.vn/lifestyle.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Travel", URL: "https://vietnamnews.vn/rss/travel.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – A Twist in the Tale", URL: "https://vietnamnews.vn/rss/a-twist-in-the-tale.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – English Through the News", URL: "https://vietnamnews.vn/rss/english-through-the-news.rss", Category: "education", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Bizhub", URL: "https://vietnamnews.vn/rss/bizhub.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – OVietnam", URL: "https://vietnamnews.vn/rss/ovietnam.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Politics & Laws", URL: "https://vietnamnews.vn/rss/politics-laws.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Society", URL: "https://vietnamnews.vn/rss/society.rss", Category: "society", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Talk Around Town", URL: "https://vietnamnews.vn/rss/talk-around-town.rss", Category: "society", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Economy", URL: "https://vietnamnews.vn/rss/economy.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Life & Style", URL: "https://vietnamnews.vn/rss/life-style.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Sports", URL: "https://vietnamnews.vn/rss/sports.rss", Category: "sports", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Environment", URL: "https://vietnamnews.vn/rss/environment.rss", Category: "science", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Domestic Press Highlights", URL: "https://vietnamnews.vn/rss/domestic-press-highlights.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Opinion", URL: "https://vietnamnews.vn/rss/opinion.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Industries", URL: "https://vietnamnews.vn/rss/industries.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Agriculture", URL: "https://vietnamnews.vn/rss/agriculture.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – World", URL: "https://vietnamnews.vn/rss/world.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "Vietnam News – Sunday", URL: "https://vietnamnews.vn/rss/sunday.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Chính trị", URL: "https://www.vietnamplus.vn/rss/chinhtri-291.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Thế giới", URL: "https://www.vietnamplus.vn/rss/thegioi-209.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – ASEAN", URL: "https://www.vietnamplus.vn/rss/thegioi/asean-356.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Châu Á - TBD", URL: "https://www.vietnamplus.vn/rss/thegioi/chaua-tbd-352.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Kinh tế", URL: "https://www.vietnamplus.vn/rss/kinhte-311.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Kinh doanh", URL: "https://www.vietnamplus.vn/rss/kinhte/kinhdoanh-342.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Tài chính", URL: "https://www.vietnamplus.vn/rss/kinhte/taichinh-343.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Tín dụng nông thôn", URL: "https://www.vietnamplus.vn/rss/kinhte/tindung-385.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Chứng khoán", URL: "https://www.vietnamplus.vn/rss/kinhte/chungkhoan-344.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Bất động sản", URL: "https://www.vietnamplus.vn/rss/kinhte/batdongsan-372.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Doanh nghiệp", URL: "https://www.vietnamplus.vn/rss/kinhte/doanhnghiep-345.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Thông tin doanh nghiệp", URL: "https://www.vietnamplus.vn/rss/kinhte/thong-tin-doanh-nghiep-433.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Thông cáo báo chí", URL: "https://www.vietnamplus.vn/rss/kinhte/thong-cao-bao-chi-426.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Xã hội", URL: "https://www.vietnamplus.vn/rss/xahoi-314.rss", Category: "society", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Giáo dục", URL: "https://www.vietnamplus.vn/rss/xahoi/giaoduc-316.rss", Category: "education", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Y tế", URL: "https://www.vietnamplus.vn/rss/xahoi/yte-325.rss", Category: "health", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Pháp luật", URL: "https://www.vietnamplus.vn/rss/xahoi/phapluat-327.rss", Category: "society", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Khoa học", URL: "https://www.vietnamplus.vn/rss/khoahoc-213.rss", Category: "science", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Khoa học ứng dụng", URL: "https://www.vietnamplus.vn/rss/khoahoc/ungdung-371.rss", Category: "science", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Công nghệ", URL: "https://www.vietnamplus.vn/rss/congnghe-212.rss", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Sản phẩm mới", URL: "https://www.vietnamplus.vn/rss/congnghe/sanphammoi-275.rss", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Ôtô - Xe máy", URL: "https://www.vietnamplus.vn/rss/otoxemay-364.rss", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Môi trường", URL: "https://www.vietnamplus.vn/rss/moitruong-270.rss", Category: "science", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Thị trường", URL: "https://www.vietnamplus.vn/rss/tinthitruong-218.rss", Category: "business", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Chuyện lạ", URL: "https://www.vietnamplus.vn/rss/chuyenla-329.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Special+", URL: "https://www.vietnamplus.vn/rss/special-plus-450.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Giao thông", URL: "https://www.vietnamplus.vn/rss/xahoi/giaothong-358.rss", Category: "society", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Người Việt bốn phương", URL: "https://www.vietnamplus.vn/rss/xahoi/vietkieu-373.rss", Category: "world", CountryCode: "VN", CountryName: "Việt Nam"},
+		{Name: "VietnamPlus – Văn hóa", URL: "https://www.vietnamplus.vn/rss/vanhoa-215.rss", Category: "culture", CountryCode: "VN", CountryName: "Việt Nam"},
 		// {Name: "BBC Business", URL: "https://feeds.bbci.co.uk/news/business/rss.xml", Category: "business", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "BBC News", URL: "https://feeds.bbci.co.uk/news/rss.xml", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "BBC UK", URL: "https://feeds.bbci.co.uk/news/uk/rss.xml", Category: "society", CountryCode: "GB", CountryName: "Vương quốc Anh"},
@@ -227,20 +289,12 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	for _, source := range sources {
-		if source.Category == "business" {
-			continue
-		}
 		if source.CountryCode == "" {
 			source.CountryCode, source.CountryName = "GLOBAL", "Toàn cầu"
 		}
 		if _, err = db.Exec(`INSERT INTO sources(name,feed_url,category_id,country_code,country_name) VALUES(?,?,(SELECT id FROM categories WHERE slug=?),?,?) ON CONFLICT(feed_url) DO UPDATE SET country_code=excluded.country_code,country_name=excluded.country_name`, source.Name, source.URL, source.Category, source.CountryCode, source.CountryName); err != nil {
 			return err
 		}
-	}
-	// Keep existing data recoverable, but stop fetching and serving the removed
-	// category immediately for both fresh and already-running databases.
-	if _, err = db.Exec("UPDATE sources SET enabled=0 WHERE category_id=(SELECT id FROM categories WHERE slug='business')"); err != nil {
-		return err
 	}
 	return nil
 }

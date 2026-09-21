@@ -511,15 +511,25 @@ func endpointError(operation string, res *http.Response) error {
 }
 
 func (c Client) Vietnamese(ctx context.Context, fields Fields) (Fields, error) {
+	return c.Translate(ctx, fields, "Vietnamese")
+}
+
+// Translate faithfully converts article fields to the requested display
+// language while preserving the response shape used by article_translations.
+func (c Client) Translate(ctx context.Context, fields Fields, language string) (Fields, error) {
 	if c.URL == "" || c.APIKey == "" {
 		return Fields{}, errors.New("translation service is not configured")
 	}
-	instruction := `Translate the supplied news fields into Vietnamese faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts. Preserve the summary's bullet structure exactly: keep every bullet, keep the "• " prefix, and place each bullet on its own line. Never merge separate bullets into one paragraph.
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return Fields{}, errors.New("translation language is required")
+	}
+	instruction := fmt.Sprintf(`Translate the supplied news fields into %s faithfully. Preserve names, numbers, and factual meaning. Do not summarize or add facts. Preserve the summary's bullet structure exactly: keep every bullet, keep the "• " prefix, and place each bullet on its own line. Never merge separate bullets into one paragraph.
 
 Your entire response MUST be one valid JSON object and nothing else. The first character must be { and the last character must be }. Do not use Markdown, code fences, prose, labels, or explanations. Use exactly these string keys: "title", "description", "summary". Keep empty input fields as empty strings.
 
 Required output shape:
-{"title":"Vietnamese translation","description":"Vietnamese translation","summary":"Vietnamese translation"}`
+{"title":"translation","description":"translation","summary":"translation"}`, language)
 	payload := map[string]any{"model": c.Model, "messages": []map[string]string{{"role": "system", "content": instruction}, {"role": "user", "content": fmt.Sprintf("title: %s\n\ndescription: %s\n\nsummary: %s", fields.Title, fields.Description, fields.Summary)}}, "temperature": 0.2, "stream": false, "response_format": map[string]string{"type": "json_object"}}
 	data, err := json.Marshal(payload)
 	if err != nil {

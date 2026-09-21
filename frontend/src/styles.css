@@ -984,9 +984,27 @@ small {
   to { opacity: 1; transform: translateY(0); }
 }
 .threads-page .masthead { margin-bottom: 18px; }
-.threads-filters { grid-template-columns: minmax(130px, .7fr) minmax(0, 1.4fr) minmax(130px, .8fr) minmax(130px, .7fr); }
-.threads-filters label { display: grid; gap: 6px; color: var(--muted); font: 700 11px/1.2 Roboto, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
-.threads-filters input, .threads-filters select { min-height: 44px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--ink); font: 16px/1.35 Roboto, sans-serif; }
+.threads-filters { grid-template-columns: 180px minmax(280px, 1fr) 220px 160px; gap: 12px; margin: 0 0 16px; padding: 16px 20px; border: 1px solid #e5e5e5; border-radius: 16px; background: #fafafa; }
+.threads-filters label { display: grid; gap: 6px; color: #737373; font: 600 12px/16px Roboto, sans-serif; letter-spacing: .04em; text-transform: none; }
+.threads-filters input, .threads-filters select, .threads-input-wrap { box-sizing: border-box; width: 100%; height: 44px; min-height: 44px; border: 1px solid #dedede; border-radius: 12px; background: #fff; color: #181818; font: 15px/1.35 Roboto, sans-serif; outline: none; }
+.threads-filters input, .threads-filters select { padding: 0 14px; }
+.threads-filters select { cursor: pointer; }
+.threads-input-wrap { display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+.threads-input-wrap > span { color: #737373; font: 600 16px/1 Roboto, sans-serif; }
+.threads-input-wrap input { height: 42px; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.threads-filters input:hover, .threads-filters select:hover, .threads-input-wrap:hover { border-color: #bdbdbd; }
+.threads-filters input:focus, .threads-filters select:focus, .threads-input-wrap:focus-within { border-color: #555; box-shadow: 0 0 0 2px rgb(0 0 0 / 6%); }
+@media (max-width: 900px) {
+  .threads-filters { grid-template-columns: minmax(0, 1fr) 160px; }
+  .threads-filters > label:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .threads-filters > label.threads-search { grid-column: 1 / -1; grid-row: 2; }
+  .threads-filters > label:nth-child(3) { grid-column: 1 / -1; grid-row: 3; }
+  .threads-filters > label:nth-child(4) { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 520px) {
+  .threads-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 14px; }
+  .threads-filters > label:nth-child(4) { grid-column: 2; }
+}
 .threads-card { position: relative; }
 .threads-card .news-card { margin: 0; }
 .thread-username { color: var(--accent); font-weight: 700; }
@@ -1017,6 +1035,86 @@ small {
 .thread-engagement dd { margin: 0; font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) { .threads-filters, .threads-target-form { grid-template-columns: 1fr; } .threads-target-list article { align-items: start; flex-direction: column; } }
 
+/* Threads-inspired reading feed: the border, not a card, separates posts. */
+.threads-page { max-width: 680px !important; }
+.threads-page .masthead { margin-bottom: 14px; }
+.threads-feed { border-top: 1px solid #eee; background: #fafafa; }
+.thread-post { padding: 18px 0; border-bottom: 1px solid #eee; background: #fff; }
+.thread-post-header { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 12px; padding: 0 14px; }
+.thread-avatar { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #ececec; }
+.thread-avatar-fallback { display: grid; place-items: center; color: #fff; background: #343434; font: 700 15px/1 Roboto, sans-serif; }
+.thread-post-main { min-width: 0; }
+.thread-post-meta { display: flex; align-items: baseline; gap: 8px; min-height: 22px; }
+.thread-post-meta strong { overflow: hidden; color: var(--ink); font: 700 15px/1.35 Roboto, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.thread-post-meta time { color: #8b8b8b; font: 13px/1.35 Roboto, sans-serif; white-space: nowrap; }
+.thread-follow { position: relative; display: inline-flex; flex: 0 0 auto; }
+.thread-follow-button { height: 25px; padding: 0 9px; border: 1px solid #d8d8d8; border-radius: 999px; background: #fff; color: #242424; cursor: pointer; font: 600 12px/1 Roboto, sans-serif; white-space: nowrap; }
+.thread-follow-button:hover:not(:disabled) { border-color: #999; background: #f7f7f7; }
+.thread-follow-button:disabled { cursor: not-allowed; opacity: .65; }
+.thread-hide-author { position: relative; display: inline-flex; flex: 0 0 auto; }
+.thread-hide-author-button { height: 25px; padding: 0 9px; border: 1px solid #edc5c1; border-radius: 999px; background: #fff; color: #b42318; cursor: pointer; font: 600 12px/1 Roboto, sans-serif; white-space: nowrap; }
+.thread-hide-author-button:hover:not(:disabled) { border-color: #c64a40; background: #fff1f0; }
+.thread-hide-author-button:disabled { cursor: not-allowed; opacity: .65; }
+.thread-follow-error { position: absolute; z-index: 6; top: calc(100% + 6px); left: 0; width: max-content; padding: 7px 9px; border-radius: 7px; background: #fff1f0; color: #b42318; font: 12px/1.3 Roboto, sans-serif; box-shadow: 0 3px 12px rgba(0,0,0,.12); }
+.thread-display-name { margin: 1px 0 7px; color: var(--muted); font: 13px/1.35 Roboto, sans-serif; }
+.thread-post-content { display: block; width: 100%; margin: 6px 0 0; color: var(--ink); text-align: left; }
+.thread-post-content p { margin: 0; white-space: pre-wrap; font: 15.5px/1.52 Roboto, sans-serif; }
+.thread-media { display: block; width: 100%; margin-top: 12px; overflow: hidden; border-radius: 12px; background: #eee; }
+.thread-media img { display: block; width: 100%; max-height: 520px; object-fit: cover; }
+.thread-post-bottom { display: grid; gap: 8px; margin-top: 12px; }
+.thread-post-bottom .category-labels { gap: 5px; }
+.thread-post-bottom .category-label { padding: 4px 8px; border-radius: 6px; background: #f5f5f5; color: #666; font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.thread-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 0 12px; border-bottom: 1px solid #eee; color: #737373; font: 500 14px/1 Roboto, sans-serif; }
+.thread-action { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 9px; border: 0; border-radius: 8px; background: transparent; color: #737373; font: 500 14px/1 Roboto, sans-serif; text-decoration: none; white-space: nowrap; }
+button.thread-action { cursor: pointer; }
+.thread-action:hover { background: #f5f5f5; color: #222; }
+.thread-action .icon { width: 18px; height: 18px; }
+.thread-action-original:hover { color: #111; }
+.thread-comments-wrap { position: relative; display: inline-flex; }
+.thread-comments { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; display: grid; gap: 8px; width: min(440px, calc(100vw - 48px)); max-height: 360px; padding: 10px; overflow-y: auto; border: 1px solid #e7e7e7; border-radius: 12px; background: #fff; box-shadow: 0 8px 28px rgba(0,0,0,.12); color: #242424; }
+.thread-comments > p { margin: 4px; color: #737373; font: 13px/1.4 Roboto, sans-serif; }
+.thread-comments-error { color: #b42318 !important; }
+.thread-comment { padding: 8px; border-radius: 9px; background: #f7f7f7; }
+.thread-comment-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; color: #737373; font: 12px/1.35 Roboto, sans-serif; }
+.thread-comment-meta strong { color: #242424; font-weight: 700; }
+.thread-comment p { margin: 4px 0 0; white-space: pre-wrap; color: #242424; font: 13px/1.45 Roboto, sans-serif; }
+.thread-comment small { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; color: #737373; font: 12px/1 Roboto, sans-serif; }
+.thread-comment small .icon { width: 13px; height: 13px; }
+.threads-load-more { display: block; margin: 18px auto; }
+@media (max-width: 700px) { .thread-post-header { padding-inline: 10px; } .thread-post { padding-block: 15px; } .thread-actions { gap: 4px; } .thread-action { padding-inline: 7px; } }
+
+.admin-visibility-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0;
+}
+.admin-visibility-tabs button {
+  border: 1px solid var(--line, #dedede);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 12px;
+}
+.threads-read-tabs { display: flex; gap: 6px; margin: 12px 0; }
+.threads-read-tabs button { border: 1px solid var(--line, #dedede); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; font: inherit; padding: 7px 12px; }
+.threads-read-tabs button.active { background: var(--ink, #181818); color: var(--paper, #fff); }
+.admin-visibility-tabs button.active { background: var(--ink, #181818); color: var(--paper, #fff); }
+.card-moderate { margin: 0 0 10px 14px; }
+.thread-author-menu { position: relative; display: inline-flex; }
+.thread-author-menu-trigger { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #737373; cursor: pointer; }
+.thread-author-menu-trigger:hover { background: #f5f5f5; color: #222; }
+.thread-author-menu-trigger .icon { width: 18px; height: 18px; }
+.thread-author-menu-popover { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; display: grid; width: 230px; padding: 8px; border: 1px solid #e8e8e8; border-radius: 14px; background: #fff; box-shadow: 0 8px 28px rgba(0,0,0,.12); color: #181818; }
+.thread-author-menu-header { padding: 8px 10px 10px; border-bottom: 1px solid #f0f0f0; color: #737373; font-size: 13px; font-weight: 600; }
+.thread-author-menu-loading { padding: 10px; color: #737373; font-size: 13px; }
+.thread-author-menu-item { display: flex; align-items: center; width: 100%; height: 42px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 15px; font-weight: 500; text-align: left; }
+.thread-author-menu-item:hover { background: #f7f7f7; }
+.thread-author-menu-item:disabled { cursor: not-allowed; opacity: .55; }
+.thread-author-menu-item.thread-author-delete { color: #c62828; }
+.thread-author-menu-item.thread-author-delete:hover { background: #fff1f0; }
+.thread-translation-error { display: block; margin-top: 8px; color: #b42318; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .scroll-to-top { animation: none; }
 }

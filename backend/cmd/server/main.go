@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -25,6 +26,7 @@ import (
 	"syscall"
 	"time"
 	"unicode"
+	"unicode/utf16"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/mmcdole/gofeed"
@@ -202,6 +204,8 @@ func (s *server) routes() http.Handler {
 		r.Get("/threads/targets", s.threadsTargets)
 		r.Get("/threads/authors", s.threadsAuthors)
 		r.Get("/threads/posts/{id}/image", s.threadImage)
+		r.Get("/threads/posts/{id}/avatar", s.threadAvatar)
+		r.Get("/threads/posts/{id}/comments", s.threadComments)
 		r.Get("/articles/{id}", s.getArticle)
 		r.Get("/articles/{id}/related", s.relatedArticles)
 		r.Get("/categories", s.categories)
@@ -209,14 +213,14 @@ func (s *server) routes() http.Handler {
 		r.Get("/countries", s.countries)
 		r.Get("/featured", s.featured)
 		r.Get("/gold-rates", s.goldRatesHandler)
+		r.Method(http.MethodPost, "/articles/{id}/read", s.requireThreadsReader(http.HandlerFunc(s.markRead)))
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireUser)
 			r.Post("/reader/articles", s.mediumReader)
-			r.Post("/articles/{id}/translations/vi", s.translateVietnamese)
+			r.Post("/articles/{id}/translations/{language}", s.translateArticle)
 			r.Post("/articles/{id}/resummarize", s.resummarizeArticle)
 			r.Post("/articles/{id}/ai-feedback", s.submitAIFeedback)
 			r.Post("/articles/{id}/reading", s.startReading)
-			r.Post("/articles/{id}/read", s.markRead)
 			r.Get("/saved", s.saved)
 			r.Delete("/saved", s.bulkUnsave)
 			r.Post("/saved/{id}", s.save)
@@ -244,27 +248,38 @@ func (s *server) routes() http.Handler {
 		})
 	})
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(s.requireAdmin)
-		r.Get("/status", s.adminStatus)
-		r.Post("/rss/fetch", s.adminFetchRSS)
-		r.Get("/threads/targets", s.adminThreadsTargets)
-		r.Post("/threads/targets", s.adminCreateThreadsTarget)
-		r.Patch("/threads/targets/{id}", s.adminUpdateThreadsTarget)
-		r.Delete("/threads/targets/{id}/posts", s.adminDeleteThreadsTargetPosts)
-		r.Delete("/threads/targets/{id}", s.adminDeleteThreadsTarget)
-		r.Post("/threads/fetch", s.adminFetchThreads)
-		r.Post("/threads/discover", s.adminDiscoverThreads)
-		r.Post("/translations/enqueue", s.adminEnqueueTranslations)
-		r.Post("/featured/regenerate", s.adminRegenerateFeatured)
-		r.Delete("/jobs/{id}", s.adminCancelJob)
-		r.Delete("/jobs", s.adminClearJobHistory)
-		r.Patch("/sources/{id}", s.adminUpdateSource)
-		r.Get("/ai/config", s.adminAIConfig)
-		r.Put("/ai/config", s.adminSaveAIConfig)
-		r.Delete("/ai/config", s.adminResetAIConfig)
-		r.Post("/ai/models", s.adminAIModels)
-		r.Post("/ai/test", s.adminTestAI)
+		r.Post("/login", s.adminLogin)
+		r.Post("/logout", s.adminLogout)
+		r.Get("/session", s.adminSession)
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAdmin)
+			r.Patch("/articles/{id}/visibility", s.adminSetArticleVisibility)
+			r.Get("/status", s.adminStatus)
+			r.Post("/rss/fetch", s.adminFetchRSS)
+			r.Get("/threads/targets", s.adminThreadsTargets)
+			r.Post("/threads/targets", s.adminCreateThreadsTarget)
+			r.Get("/threads/authors/{username}/moderation", s.adminThreadsAuthorModeration)
+			r.Put("/threads/authors/{username}/block", s.adminBlockThreadsAuthor)
+			r.Delete("/threads/authors/{username}/block", s.adminUnblockThreadsAuthor)
+			r.Delete("/threads/authors/{username}/posts", s.adminDeleteThreadsAuthorPosts)
+			r.Patch("/threads/targets/{id}", s.adminUpdateThreadsTarget)
+			r.Delete("/threads/targets/{id}/posts", s.adminDeleteThreadsTargetPosts)
+			r.Delete("/threads/targets/{id}", s.adminDeleteThreadsTarget)
+			r.Post("/threads/fetch", s.adminFetchThreads)
+			r.Post("/threads/discover", s.adminDiscoverThreads)
+			r.Post("/translations/enqueue", s.adminEnqueueTranslations)
+			r.Post("/featured/regenerate", s.adminRegenerateFeatured)
+			r.Delete("/jobs/{id}", s.adminCancelJob)
+			r.Delete("/jobs", s.adminClearJobHistory)
+			r.Patch("/sources/{id}", s.adminUpdateSource)
+			r.Get("/ai/config", s.adminAIConfig)
+			r.Put("/ai/config", s.adminSaveAIConfig)
+			r.Delete("/ai/config", s.adminResetAIConfig)
+			r.Post("/ai/models", s.adminAIModels)
+			r.Post("/ai/test", s.adminTestAI)
+		})
 	})
+	r.Get("/go/threads/{id}", s.redirectThread)
 	sub, _ := fs.Sub(embedded, "static")
 	r.Handle("/*", spa(sub))
 	return r
@@ -326,6 +341,36 @@ func (s *server) optionalUser(r *http.Request) (user, bool) {
 	}
 	return user{}, false
 }
+
+// optionalThreadsReader also gives an authenticated admin browser a dedicated
+// reader identity. The admin cookie must not grant access to general user
+// features, but it is sufficient for the Threads-only read/unread workflow.
+func (s *server) optionalThreadsReader(r *http.Request) (user, bool) {
+	if u, ok := s.optionalUser(r); ok {
+		return u, true
+	}
+	if !s.isAdminRequest(r) {
+		return user{}, false
+	}
+	u, err := s.upsertUser(r.Context(), user{TelegramID: -1, Username: "admin-reader", FirstName: "Admin reader"})
+	if err != nil {
+		log.Printf("admin threads reader upsert: %v", err)
+		return user{}, false
+	}
+	return u, true
+}
+
+func (s *server) requireThreadsReader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, ok := s.optionalThreadsReader(r)
+		if !ok {
+			jsonErr(w, http.StatusUnauthorized, "a Telegram or admin session is required")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, u)))
+	})
+}
+
 func (s *server) requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, ok := s.optionalUser(r)
@@ -387,6 +432,11 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	// imported before the source was disabled. Relevant Threads discovery posts
 	// now join the same public feed as RSS items.
 	where := []string{"s.enabled=1"}
+	if q.Get("visibility") == "hidden" && s.isAdminRequest(r) {
+		where = append(where, "a.is_hidden=1")
+	} else {
+		where = append(where, "a.is_hidden=0")
+	}
 	if c := q.Get("category"); c != "" {
 		where = append(where, "EXISTS(SELECT 1 FROM article_categories ac JOIN categories article_category ON article_category.id=ac.category_id WHERE ac.article_id=a.id AND article_category.slug=?)")
 		args = append(args, c)
@@ -452,7 +502,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	args = append(args, limit, offset)
-	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id LEFT JOIN source_health h ON h.source_id=s.id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
+	sqlq := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,a.is_hidden,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id LEFT JOIN source_health h ON h.source_id=s.id%s WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, title, description, summary, savedJoin, readJoin, translationJoin, strings.Join(where, " AND "), order)
 	rows, e := s.db.QueryContext(r.Context(), sqlq, args...)
 	if e != nil {
 		jsonErr(w, 500, "could not load articles")
@@ -463,12 +513,14 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var a article
 		var saved, read int
-		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &a.ThreadPostID, &a.ThreadAuthor, &a.ThreadLikes, &a.ThreadReplies, &a.ThreadReposts, &a.ThreadClassification, &a.ThreadClassificationSource, &saved, &read); e != nil {
+		var hidden int
+		if e = rows.Scan(&a.ID, &a.Title, &a.Description, &a.Summary, &a.URL, &a.ImageURL, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &a.ThreadPostID, &a.ThreadAuthor, &a.ThreadLikes, &a.ThreadReplies, &a.ThreadReposts, &a.ThreadClassification, &a.ThreadClassificationSource, &hidden, &saved, &read); e != nil {
 			jsonErr(w, 500, "could not read articles")
 			return
 		}
 		a.IsSaved = saved == 1
 		a.IsRead = read == 1
+		a.IsHidden = hidden == 1
 		s.wrapThreadImage(&a)
 		items = append(items, a)
 	}
@@ -490,7 +542,11 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		args = append(args, u.ID, u.ID)
 	}
 	args = append(args, id)
-	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.full_content,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1`, saved, read)
+	visibility := "a.is_hidden=0"
+	if s.isAdminRequest(r) {
+		visibility = "1=1"
+	}
+	query := fmt.Sprintf(`SELECT a.id,a.title,a.description,a.full_content,a.summary,a.url,a.image_url,a.content_images,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,a.thread_post_id,a.thread_author,a.thread_likes,a.thread_replies,a.thread_reposts,a.thread_classification,a.thread_classification_source,%s,%s FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id WHERE a.id=? AND s.enabled=1 AND %s`, saved, read, visibility)
 	var isSaved, isRead int
 	e := s.db.QueryRowContext(r.Context(), query, args...).Scan(&a.ID, &a.Title, &a.Description, &a.FullContent, &a.Summary, &a.URL, &a.ImageURL, &imageJSON, &a.Source, &a.SourceID, &a.CountryCode, &a.CountryName, &a.Category, &a.PublishedAt, &a.ThreadPostID, &a.ThreadAuthor, &a.ThreadLikes, &a.ThreadReplies, &a.ThreadReposts, &a.ThreadClassification, &a.ThreadClassificationSource, &isSaved, &isRead)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -520,7 +576,7 @@ func (s *server) relatedArticles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var exists int
-	if err = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=? AND s.enabled=1`, id).Scan(&exists); err != nil {
+	if err = s.db.QueryRowContext(r.Context(), `SELECT count(*) FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.id=? AND s.enabled=1 AND a.is_hidden=0`, id).Scan(&exists); err != nil {
 		jsonErr(w, http.StatusInternalServerError, "could not load related articles")
 		return
 	}
@@ -539,7 +595,7 @@ func (s *server) relatedArticles(w http.ResponseWriter, r *http.Request) {
 	query := fmt.Sprintf(`WITH target AS (SELECT source_id FROM articles WHERE id=?), target_categories AS (SELECT category_id FROM article_categories WHERE article_id=?)
 		SELECT a.id,a.title,a.description,a.summary,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,%s,%s
 		FROM articles a JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id
-		WHERE a.id<>? AND a.published_at>=? AND s.enabled=1 AND (
+		WHERE a.id<>? AND a.published_at>=? AND s.enabled=1 AND a.is_hidden=0 AND (
 			a.source_id=(SELECT source_id FROM target) OR EXISTS(SELECT 1 FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id IN target_categories)
 		)
 		ORDER BY (SELECT count(*) FROM article_categories ac WHERE ac.article_id=a.id AND ac.category_id IN target_categories) DESC,
@@ -640,7 +696,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 		title, description, summary = "COALESCE(NULLIF(tr.title,''),a.title)", "a.description", "COALESCE(NULLIF(tr.summary,''),a.summary)"
 		args = append(args, language)
 	}
-	where := []string{"sa.user_id=?", "s.enabled=1"}
+	where := []string{"sa.user_id=?", "s.enabled=1", "a.is_hidden=0"}
 	args = append(args, u.ID)
 	if category := q.Get("category"); category != "" {
 		where = append(where, "EXISTS(SELECT 1 FROM article_categories ac JOIN categories article_category ON article_category.id=ac.category_id WHERE ac.article_id=a.id AND article_category.slug=?)")
@@ -1088,7 +1144,7 @@ func (s *server) readingHistory(w http.ResponseWriter, r *http.Request) {
 		args = append(args, status)
 	}
 	args = append(args, limit)
-	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?),arh.status FROM article_reading_history arh JOIN articles a ON a.id=arh.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s AND s.enabled=1 ORDER BY arh.last_opened_at DESC LIMIT ?`, title, description, summary, translationJoin, where)
+	query := fmt.Sprintf(`SELECT a.id,%s,%s,%s,a.url,a.image_url,s.name,s.id,s.country_code,s.country_name,c.slug,a.published_at,EXISTS(SELECT 1 FROM saved_articles sa WHERE sa.article_id=a.id AND sa.user_id=?),arh.status FROM article_reading_history arh JOIN articles a ON a.id=arh.article_id JOIN sources s ON s.id=a.source_id JOIN categories c ON c.id=a.category_id%s WHERE %s AND s.enabled=1 AND a.is_hidden=0 ORDER BY arh.last_opened_at DESC LIMIT ?`, title, description, summary, translationJoin, where)
 	// The saved-article predicate appears before the translation join in the
 	// SELECT clause, so its parameter must be first.
 	args = append([]any{u.ID}, args...)
@@ -1223,7 +1279,7 @@ func (s *server) fetchSources(ctx context.Context, nameFilter string, since time
 }
 
 func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, sourceIDs []int64, since time.Time) {
-	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND c.slug<>'business' AND s.feed_url<>'https://www.threads.com'`
+	query := `SELECT s.id,s.name,s.feed_url,s.category_id,c.slug FROM sources s JOIN categories c ON c.id=s.category_id WHERE s.enabled=1 AND s.feed_url<>'https://www.threads.com'`
 	args := []any{}
 	if strings.TrimSpace(nameFilter) != "" {
 		query += " AND lower(s.name) LIKE ?"
@@ -1323,7 +1379,7 @@ func (s *server) fetchSourcesSelected(ctx context.Context, nameFilter string, so
 func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (result rssFetchResult, err error) {
 	started := time.Now()
 	defer func() { result.Duration = time.Since(started) }()
-	feed, e := gofeed.NewParser().ParseURLWithContext(src.FeedURL, ctx)
+	feed, e := parseFeedURL(ctx, src.FeedURL)
 	if e != nil {
 		return result, e
 	}
@@ -1465,6 +1521,64 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 		}
 	}
 	return result, nil
+}
+
+// parseFeedURL decodes UTF-16 RSS feeds before handing them to gofeed. Most
+// feeds are UTF-8, but Việt Nam News publishes its feeds as UTF-16 XML and
+// gofeed's type detection only recognizes byte-oriented UTF-8 XML markers.
+func parseFeedURL(ctx context.Context, feedURL string) (feed *gofeed.Feed, err error) {
+	parser := gofeed.NewParser()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", parser.UserAgent)
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("feed request returned %s", response.Status)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	return parser.Parse(bytes.NewReader(decodeUTF16Feed(body)))
+}
+
+func decodeUTF16Feed(body []byte) []byte {
+	if len(body) < 2 {
+		return body
+	}
+	start := 0
+	littleEndian := body[1] == 0 && body[0] != 0
+	bigEndian := body[0] == 0 && body[1] != 0
+	if body[0] == 0xff && body[1] == 0xfe {
+		littleEndian, start = true, 2
+	} else if body[0] == 0xfe && body[1] == 0xff {
+		bigEndian, start = true, 2
+	}
+	if !littleEndian && !bigEndian {
+		return body
+	}
+	units := make([]uint16, 0, len(body)/2)
+	for index := start; index+1 < len(body); index += 2 {
+		if littleEndian {
+			units = append(units, uint16(body[index])|uint16(body[index+1])<<8)
+		} else {
+			units = append(units, uint16(body[index])<<8|uint16(body[index+1]))
+		}
+	}
+	decoded := strings.TrimPrefix(string(utf16.Decode(units)), "\ufeff")
+	decoded = strings.ReplaceAll(decoded, `encoding="utf-16"`, `encoding="utf-8"`)
+	decoded = strings.ReplaceAll(decoded, `encoding='utf-16'`, `encoding='utf-8'`)
+	return []byte(decoded)
 }
 func normalizeURL(raw string) string {
 	u, e := url.Parse(strings.TrimSpace(raw))

@@ -39,12 +39,15 @@ type article struct {
 	FolderIDs                  []int64           `json:"folder_ids,omitempty"`
 	TagIDs                     []int64           `json:"tag_ids,omitempty"`
 	ThreadAuthor               string            `json:"thread_author,omitempty"`
+	ThreadDisplayName          string            `json:"thread_display_name,omitempty"`
+	ThreadAvatarURL            string            `json:"thread_avatar_url,omitempty"`
 	ThreadPostID               string            `json:"-"`
 	ThreadLikes                int64             `json:"thread_likes,omitempty"`
 	ThreadReplies              int64             `json:"thread_replies,omitempty"`
 	ThreadReposts              int64             `json:"thread_reposts,omitempty"`
 	ThreadClassification       string            `json:"thread_classification,omitempty"`
 	ThreadClassificationSource string            `json:"thread_classification_source,omitempty"`
+	IsHidden                   bool              `json:"is_hidden"`
 }
 
 type articleCategory struct {
