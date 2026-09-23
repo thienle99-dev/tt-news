@@ -67,6 +67,7 @@ func (c Client) FetchContent(ctx context.Context, pageURL string) (Content, erro
 	if err != nil {
 		return Content{}, err
 	}
+	removeNonContentNodes(doc)
 	root := richRoot(doc)
 	base := req.URL
 	if res.Request != nil && res.Request.URL != nil {

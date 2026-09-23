@@ -66,6 +66,43 @@ func TestValidThreadPostText(t *testing.T) {
 	}
 }
 
+func TestSaveThreadPostRepairsExistingThreadContent(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "news.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`
+		INSERT INTO categories(id,slug,name) VALUES(9601,'threads-repair','Threads repair');
+		INSERT INTO threads_targets(id,kind,query) VALUES(9601,'profile','repair_user');
+		INSERT INTO articles(id,source_id,category_id,title,description,full_content,url,published_at,thread_post_id,thread_author) VALUES
+			(9601,(SELECT id FROM sources WHERE feed_url='https://www.threads.com'),9601,'Old title','{"require":[["CometSSR"]]}','{"require":[["bootstrapWebSession"]]}','https://www.threads.com/@repair_user/post/repair-1','2026-01-01T00:00:00Z','repair-1','repair_user');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &server{db: db}
+	_, err = s.saveThreadPost(context.Background(), threadsTarget{ID: 9601, Kind: "profile"}, threadPost{
+		ID: "repair-1", URL: "https://www.threads.com/@repair_user/post/repair-1", Author: "repair_user",
+		DisplayName: "Repair User", Text: "Đây là caption hợp lệ được lấy lại từ bài Threads.",
+		PublishedAt: time.Date(2026, 9, 10, 8, 0, 0, 0, time.UTC), Likes: 9, Replies: 3, Reposts: 1,
+	}, threadClassification{Category: "threads-repair", Source: "rule"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var title, description, fullContent, author string
+	var likes int64
+	if err = db.QueryRow(`SELECT title,description,full_content,thread_author,thread_likes FROM articles WHERE id=9601`).Scan(&title, &description, &fullContent, &author, &likes); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Đây là caption hợp lệ được lấy lại từ bài Threads." || description != fullContent || author != "repair_user" || likes != 9 {
+		t.Fatalf("repaired article = title %q description %q full_content %q author %q likes %d", title, description, fullContent, author, likes)
+	}
+}
+
 func TestSelectDiverseThreadCandidatesEnforcesHardAuthorAndCategoryLimits(t *testing.T) {
 	candidate := func(author, category string, score float64) threadCandidate {
 		return threadCandidate{

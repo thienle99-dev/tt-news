@@ -19,6 +19,13 @@ func TestExtractHTMLPrefersArticleParagraphs(t *testing.T) {
 	}
 }
 
+func TestExtractHTMLIgnoresSSRAndNonContentNodes(t *testing.T) {
+	markup := `<html><head><style>.payload{display:none}</style></head><body><script>{"require":[["CometSSR"]]}</script><noscript>hydration fallback</noscript><p>Readable article text.</p></body></html>`
+	if got, want := ExtractHTML(markup), "Readable article text."; got != want {
+		t.Fatalf("ExtractHTML() = %q, want %q", got, want)
+	}
+}
+
 func TestFetchRejectsNonHTML(t *testing.T) {
 	client := &http.Client{Transport: roundTripper(func(req *http.Request) (*http.Response, error) {
 		if !strings.Contains(req.Header.Get("Accept"), "text/html") {

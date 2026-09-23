@@ -67,12 +67,20 @@ func ExtractHTML(markup string) string {
 	if err != nil {
 		return ""
 	}
+	removeNonContentNodes(doc)
 	for _, selector := range []string{"article", "[itemprop='articleBody']", "main", ".article-body", ".article__body", ".story-body", ".entry-content", ".post-content"} {
 		if text := selectionText(doc.Find(selector).First()); text != "" {
 			return text
 		}
 	}
 	return selectionText(doc.Find("body").First())
+}
+
+// removeNonContentNodes prevents hydration/bootstrap payloads and embedded
+// styles from being mistaken for article text when extraction falls back to
+// a broad container such as body.
+func removeNonContentNodes(doc *goquery.Document) {
+	doc.Find("script,style,noscript").Remove()
 }
 
 func PlainText(markup string) string {

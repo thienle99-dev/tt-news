@@ -798,17 +798,19 @@ func (s *server) saveThreadPost(ctx context.Context, target threadsTarget, p thr
 		return false, nil
 	}
 	var articleID int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM articles WHERE url=?`, p.URL).Scan(&articleID)
+	var existingThreadPostID, existingURL string
+	err := s.db.QueryRowContext(ctx, `SELECT id,thread_post_id,url FROM articles WHERE url=?`, p.URL).Scan(&articleID, &existingThreadPostID, &existingURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		fingerprint := articleFingerprint(p.Text, 20)
 		if fingerprint != "" {
-			err = s.db.QueryRowContext(ctx, `SELECT id FROM articles WHERE content_fingerprint=? OR title_fingerprint=? LIMIT 1`, fingerprint, fingerprint).Scan(&articleID)
+			err = s.db.QueryRowContext(ctx, `SELECT id,thread_post_id,url FROM articles WHERE content_fingerprint=? OR title_fingerprint=? LIMIT 1`, fingerprint, fingerprint).Scan(&articleID, &existingThreadPostID, &existingURL)
 		}
 	}
 	isNew := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !isNew {
 		return false, err
 	}
+	existingThread := existingThreadPostID != "" || allowedThreadsPostURL(existingURL)
 	if isNew {
 		r, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint,thread_post_id,thread_author,thread_display_name,thread_avatar_url,thread_likes,thread_replies,thread_reposts,thread_classification,thread_classification_source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sourceID, categoryID, title, p.Text, p.Text, "", p.URL, p.ImageURL, "[]", p.PublishedAt.UTC().Format(time.RFC3339), articleFingerprint(title, 20), articleFingerprint(p.Text, 20), p.ID, p.Author, p.DisplayName, p.AvatarURL, p.Likes, p.Replies, p.Reposts, classification.Category, classification.Source)
 		if e != nil {
@@ -817,9 +819,21 @@ func (s *server) saveThreadPost(ctx context.Context, target threadsTarget, p thr
 		articleID, _ = r.LastInsertId()
 		_ = s.replaceArticleCategories(ctx, articleID, []categoryDefinition{{slug: classification.Category, name: classification.Category}})
 	} else {
-		_, err = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,thread_author=CASE WHEN thread_post_id<>'' THEN ? ELSE thread_author END,thread_display_name=CASE WHEN ?<>'' THEN ? ELSE thread_display_name END,thread_avatar_url=CASE WHEN ?<>'' THEN ? ELSE thread_avatar_url END,thread_likes=CASE WHEN thread_post_id<>'' THEN ? ELSE thread_likes END,thread_replies=CASE WHEN thread_post_id<>'' THEN ? ELSE thread_replies END,thread_reposts=CASE WHEN thread_post_id<>'' THEN ? ELSE thread_reposts END WHERE id=?`, p.ImageURL, p.ImageURL, p.Author, p.DisplayName, p.DisplayName, p.AvatarURL, p.AvatarURL, p.Likes, p.Replies, p.Reposts, articleID)
+		if existingThread {
+			// A Threads crawl is the authoritative source for these fields. In
+			// particular, rewriting description/full_content repairs old rows that
+			// were previously overwritten with the page's hydration payload.
+			_, err = s.db.ExecContext(ctx, `UPDATE articles SET category_id=?,title=?,description=?,full_content=?,title_fingerprint=?,content_fingerprint=?,image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,thread_post_id=CASE WHEN thread_post_id<>'' THEN thread_post_id ELSE ? END,thread_author=?,thread_display_name=?,thread_avatar_url=?,thread_likes=?,thread_replies=?,thread_reposts=?,thread_classification=?,thread_classification_source=? WHERE id=?`, categoryID, title, p.Text, p.Text, articleFingerprint(title, 20), articleFingerprint(p.Text, 20), p.ImageURL, p.ImageURL, p.ID, p.Author, p.DisplayName, p.AvatarURL, p.Likes, p.Replies, p.Reposts, classification.Category, classification.Source, articleID)
+		} else {
+			_, err = s.db.ExecContext(ctx, `UPDATE articles SET image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END WHERE id=?`, p.ImageURL, p.ImageURL, articleID)
+		}
 		if err != nil {
 			return false, err
+		}
+		if existingThread {
+			if err = s.replaceArticleCategories(ctx, articleID, []categoryDefinition{{slug: classification.Category, name: classification.Category}}); err != nil {
+				return false, err
+			}
 		}
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO article_threads_targets(article_id,target_id) VALUES(?,?)`, articleID, target.ID)

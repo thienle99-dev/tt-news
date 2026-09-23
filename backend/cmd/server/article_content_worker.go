@@ -36,6 +36,7 @@ func (s *server) fetchMissingArticleContent(ctx context.Context) {
 	rows, err := s.db.QueryContext(ctx, `SELECT a.id,a.url FROM articles a
 		LEFT JOIN article_content_fetches f ON f.article_id=a.id
 		WHERE length(trim(a.full_content))<? AND a.url<>''
+		AND a.thread_post_id=''
 		AND f.article_id IS NULL
 		ORDER BY a.published_at DESC,a.id DESC LIMIT ?`, minimumArticleContentLength, s.cfg.RSSContentFetchLimit)
 	if err != nil {
