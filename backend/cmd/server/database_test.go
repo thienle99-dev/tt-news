@@ -98,6 +98,42 @@ func TestDecodeUTF16Feed(t *testing.T) {
 	}
 }
 
+func TestMigrateSeedsRedditWorldNewsFeeds(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "news.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if err = migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{
+		"https://www.reddit.com/r/worldnews/new/.rss": "Reddit r/worldnews – Bài mới",
+		"https://www.reddit.com/r/worldnews/hot/.rss": "Reddit r/worldnews – Hot",
+	}
+	for url, expectedName := range want {
+		var name, category, countryCode string
+		if err = db.QueryRow(`SELECT s.name, c.slug, s.country_code FROM sources s JOIN categories c ON c.id = s.category_id WHERE s.feed_url = ?`, url).Scan(&name, &category, &countryCode); err != nil {
+			t.Fatalf("seeded source %q: %v", url, err)
+		}
+		if name != expectedName || category != "world" || countryCode != "US" {
+			t.Errorf("source %q = (%q, %q, %q), want (%q, world, US)", url, name, category, countryCode, expectedName)
+		}
+		var count int
+		if err = db.QueryRow(`SELECT COUNT(*) FROM sources WHERE feed_url = ?`, url).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Errorf("source %q count = %d, want 1 after repeated migration", url, count)
+		}
+	}
+}
+
 func TestMigrateSeedsVietnamPlusFeeds(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "news.db"))
 	if err != nil {

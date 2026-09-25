@@ -1028,7 +1028,7 @@ func (s *server) listThreads(w http.ResponseWriter, r *http.Request) {
 		a.ThreadPostID = "threads"
 		a.IsHidden = hidden == 1
 		a.IsRead = read == 1
-		s.wrapThreadImage(&a)
+		s.wrapArticleMedia(&a)
 		out = append(out, a)
 	}
 	jsonOut(w, 200, out)
@@ -1172,12 +1172,14 @@ func (s *server) replaceThreadComments(ctx context.Context, articleID int64, com
 	return tx.Commit()
 }
 
-func (s *server) wrapThreadImage(article *article) {
+func (s *server) wrapArticleMedia(article *article) {
 	if article.ThreadPostID != "" && article.ID > 0 {
 		article.URL = fmt.Sprintf("/go/threads/%d", article.ID)
-	}
-	if article.ThreadPostID != "" && article.ImageURL != "" {
-		article.ImageURL = fmt.Sprintf("/api/threads/posts/%d/image", article.ID)
+		if article.ImageURL != "" {
+			article.ImageURL = fmt.Sprintf("/api/threads/posts/%d/image", article.ID)
+		}
+	} else if article.ID > 0 && article.ImageURL != "" {
+		article.ImageURL = fmt.Sprintf("/api/articles/%d/image", article.ID)
 	}
 	if article.ThreadPostID != "" && article.ThreadAvatarURL != "" {
 		article.ThreadAvatarURL = fmt.Sprintf("/api/threads/posts/%d/avatar", article.ID)

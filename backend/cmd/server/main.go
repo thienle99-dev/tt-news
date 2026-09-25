@@ -206,6 +206,7 @@ func (s *server) routes() http.Handler {
 		r.Get("/threads/posts/{id}/image", s.threadImage)
 		r.Get("/threads/posts/{id}/avatar", s.threadAvatar)
 		r.Get("/threads/posts/{id}/comments", s.threadComments)
+		r.Get("/articles/{id}/image", s.newsArticleImage)
 		r.Get("/articles/{id}", s.getArticle)
 		r.Get("/articles/{id}/related", s.relatedArticles)
 		r.Get("/categories", s.categories)
@@ -521,7 +522,7 @@ func (s *server) listArticles(w http.ResponseWriter, r *http.Request) {
 		a.IsSaved = saved == 1
 		a.IsRead = read == 1
 		a.IsHidden = hidden == 1
-		s.wrapThreadImage(&a)
+		s.wrapArticleMedia(&a)
 		items = append(items, a)
 	}
 	if e = s.attachArticleCategoriesList(r.Context(), items); e != nil {
@@ -558,7 +559,7 @@ func (s *server) getArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.ContentImages = decodeContentImages(imageJSON)
-	s.wrapThreadImage(&a)
+	s.wrapArticleMedia(&a)
 	a.IsSaved, a.IsRead = isSaved == 1, isRead == 1
 	if e = s.attachArticleCategories(r.Context(), &a); e != nil {
 		jsonErr(w, 500, "could not load article categories")
@@ -615,6 +616,7 @@ func (s *server) relatedArticles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item.IsSaved, item.IsRead = itemSaved == 1, itemRead == 1
+		s.wrapArticleMedia(&item)
 		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {
@@ -757,6 +759,7 @@ func (s *server) saved(w http.ResponseWriter, r *http.Request) {
 		}
 		a.IsSaved = true
 		a.IsRead = read == 1
+		s.wrapArticleMedia(&a)
 		out = append(out, a)
 	}
 	if err := s.attachSavedOrganization(r.Context(), u.ID, out); err != nil {
@@ -1164,6 +1167,7 @@ func (s *server) readingHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.IsSaved, a.IsRead = saved == 1, itemStatus == "read"
+		s.wrapArticleMedia(&a)
 		items = append(items, a)
 	}
 	if err = s.attachArticleCategoriesList(r.Context(), items); err != nil {
@@ -1421,18 +1425,36 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, fmt.Errorf("rss category %q is not configured", categorySlug)
 		}
 		var existingArticleID int64
+		var existingSourceID int64
 		var existingImage, existingDescription string
-		e = s.db.QueryRowContext(ctx, "SELECT id,image_url,description FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingImage, &existingDescription)
+		e = s.db.QueryRowContext(ctx, "SELECT id,source_id,image_url,description FROM articles WHERE url=?", link).Scan(&existingArticleID, &existingSourceID, &existingImage, &existingDescription)
 		if e == nil {
-			if existingImage != "" && existingDescription != "" {
-				if e = s.replaceArticleCategories(ctx, existingArticleID, categoryDefinitions); e != nil {
-					return result, e
-				}
+		} else if !errors.Is(e, sql.ErrNoRows) {
+			return result, e
+		}
+		rssGUIDHash := rssItemGUIDHash(item.GUID)
+		if rssGUIDHash != "" {
+			var guidArticleID int64
+			e = s.db.QueryRowContext(ctx, "SELECT id FROM articles WHERE source_id=? AND rss_guid_hash=?", src.ID, rssGUIDHash).Scan(&guidArticleID)
+			if e == nil && (existingArticleID == 0 || existingArticleID != guidArticleID) {
 				result.Existing++
 				continue
 			}
-		} else if !errors.Is(e, sql.ErrNoRows) {
-			return result, e
+			if e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return result, e
+			}
+		}
+		if existingArticleID != 0 && existingImage != "" && existingDescription != "" {
+			if existingSourceID == src.ID && rssGUIDHash != "" {
+				if _, e = s.db.ExecContext(ctx, "UPDATE articles SET rss_guid_hash=? WHERE id=?", rssGUIDHash, existingArticleID); e != nil {
+					return result, e
+				}
+			}
+			if e = s.replaceArticleCategories(ctx, existingArticleID, categoryDefinitions); e != nil {
+				return result, e
+			}
+			result.Existing++
+			continue
 		}
 		titleFingerprint := articleFingerprint(title, 20)
 		if existingArticleID == 0 && titleFingerprint != "" {
@@ -1476,7 +1498,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 			return result, marshalErr
 		}
 		if existingArticleID != 0 {
-			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET category_id=?,image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END WHERE id=?`, categoryID, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, existingArticleID); e != nil {
+			if _, e = s.db.ExecContext(ctx, `UPDATE articles SET category_id=?,image_url=CASE WHEN ?<>'' THEN ? ELSE image_url END,content_images=CASE WHEN ?<>'' THEN ? ELSE content_images END,description=CASE WHEN description='' AND ?<>'' THEN ? ELSE description END,full_content=CASE WHEN length(?)>length(full_content) THEN ? ELSE full_content END,rss_guid_hash=CASE WHEN ?<>'' AND source_id=? THEN ? ELSE rss_guid_hash END WHERE id=?`, categoryID, image, image, string(contentImagesJSON), string(contentImagesJSON), description, description, fullContent, fullContent, rssGUIDHash, src.ID, rssGUIDHash, existingArticleID); e != nil {
 				return result, e
 			}
 			if e = s.replaceArticleCategories(ctx, existingArticleID, categoryDefinitions); e != nil {
@@ -1497,7 +1519,7 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 				return result, e
 			}
 		}
-		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, categoryID, title, description, fullContent, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint)
+		dbResult, e := s.db.ExecContext(ctx, `INSERT INTO articles(source_id,category_id,title,description,full_content,summary,url,image_url,content_images,published_at,title_fingerprint,content_fingerprint,rss_guid_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, src.ID, categoryID, title, description, fullContent, "", link, image, string(contentImagesJSON), published.UTC().Format(time.RFC3339), titleFingerprint, contentFingerprint, rssGUIDHash)
 		if e != nil {
 			return result, e
 		}
@@ -1518,6 +1540,8 @@ func (s *server) fetchSource(ctx context.Context, src source, since time.Time) (
 					log.Printf("rss translation queued article id=%d", articleID)
 				}
 			}
+		} else {
+			result.Existing++
 		}
 	}
 	return result, nil
@@ -1605,6 +1629,15 @@ func articleFingerprint(value string, minimumLength int) string {
 		return ""
 	}
 	digest := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", digest)
+}
+
+func rssItemGUIDHash(guid string) string {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(guid))
 	return fmt.Sprintf("%x", digest)
 }
 

@@ -352,6 +352,7 @@ func (s *server) featuredTopicArticles(ctx context.Context, topicID int64, langu
 		}
 		item.IsSaved = isSaved == 1
 		item.IsRead = isRead == 1
+		s.wrapArticleMedia(&item)
 		out = append(out, item)
 	}
 	if err = rows.Err(); err != nil {

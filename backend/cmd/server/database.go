@@ -39,13 +39,13 @@ func openDB(file string) (*sql.DB, error) {
 
 func migrate(db *sql.DB) error {
 	var err error
-	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql", "migrations/024_threads.sql", "migrations/025_threads_discovery.sql", "migrations/026_threads_author_blocks.sql", "migrations/027_threads_comments.sql"} {
+	for _, name := range []string{"migrations/001_init.sql", "migrations/002_translations.sql", "migrations/003_article_content_images.sql", "migrations/004_translation_jobs.sql", "migrations/005_remove_reuters.sql", "migrations/007_featured_briefs.sql", "migrations/008_reading_history.sql", "migrations/009_saved_organization.sql", "migrations/010_ai_feedback.sql", "migrations/011_source_health.sql", "migrations/012_ai_config.sql", "migrations/013_article_categories.sql", "migrations/014_daily_brief.sql", "migrations/015_medium_reader.sql", "migrations/016_job_runs.sql", "migrations/017_job_progress.sql", "migrations/018_ai_usage.sql", "migrations/019_article_content_fetches.sql", "migrations/020_article_content_extractor_version.sql", "migrations/021_daily_digest.sql", "migrations/022_article_watches.sql", "migrations/023_saved_filters.sql", "migrations/024_threads.sql", "migrations/025_threads_discovery.sql", "migrations/026_threads_author_blocks.sql", "migrations/027_threads_comments.sql", "migrations/028_rss_item_guid.sql"} {
 		var schema []byte
 		schema, err = embedded.ReadFile(name)
 		if err != nil {
 			return err
 		}
-		if _, err = db.Exec(string(schema)); err != nil && !(name == "migrations/003_article_content_images.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/017_job_progress.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/020_article_content_extractor_version.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/025_threads_discovery.sql" && strings.Contains(err.Error(), "duplicate column name")) {
+		if _, err = db.Exec(string(schema)); err != nil && !(name == "migrations/003_article_content_images.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/017_job_progress.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/020_article_content_extractor_version.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/025_threads_discovery.sql" && strings.Contains(err.Error(), "duplicate column name")) && !(name == "migrations/028_rss_item_guid.sql" && strings.Contains(err.Error(), "duplicate column name")) {
 			return err
 		}
 	}
@@ -139,6 +139,8 @@ func migrate(db *sql.DB) error {
 		{Name: "Goon's Solo Playbook", URL: "https://goonnguyen.substack.com/feed", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
 		{Name: "AutoDaily", URL: "https://forum.autodaily.vn/forums/tin-tuc/index.rss", Category: "technology", CountryCode: "VN", CountryName: "Việt Nam"},
 		{Name: "Product Hunt", URL: "https://www.producthunt.com/feed", Category: "technology", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Reddit r/worldnews – Bài mới", URL: "https://www.reddit.com/r/worldnews/new/.rss", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
+		{Name: "Reddit r/worldnews – Hot", URL: "https://www.reddit.com/r/worldnews/hot/.rss", Category: "world", CountryCode: "US", CountryName: "Hoa Kỳ"},
 		// {Name: "Al Jazeera English", URL: "https://www.aljazeera.com/xml/rss/all.xml", Category: "world", CountryCode: "QA", CountryName: "Qatar"},
 		// {Name: "The Guardian World", URL: "https://www.theguardian.com/world/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},
 		// {Name: "The Guardian Politics", URL: "https://www.theguardian.com/politics/rss", Category: "world", CountryCode: "GB", CountryName: "Vương quốc Anh"},

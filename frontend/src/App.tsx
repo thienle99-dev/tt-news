@@ -936,7 +936,9 @@ function Card({
         aria-label={`${t.openArticle}: ${article.title}`}
       >
         {article.image_url ? (
-          <img src={article.image_url} alt="" />
+          <div className={`news-media ${hero ? "hero-card-media" : "news-card-media"}`}>
+            <img src={article.image_url} alt="" />
+          </div>
         ) : (
           <div className="cover-placeholder">SIGNAL</div>
         )}
@@ -1146,7 +1148,9 @@ function Detail({
       </div>
       {watchError && <p className="watch-error" role="alert">{watchError}</p>}
       {article.image_url && (
-        <img className="detail-image" src={article.image_url} alt="" />
+        <div className="news-media detail-image">
+          <img src={article.image_url} alt="" />
+        </div>
       )}
       {
         <section className="summary-panel">
@@ -1202,7 +1206,7 @@ function Detail({
       {(relatedLoading || related.length > 0) && <section className="related-articles" aria-labelledby="related-articles-title" aria-busy={relatedLoading}>
         <h2 id="related-articles-title">{t.relatedArticles}</h2>
         {relatedLoading ? <div className="related-list related-skeletons" aria-hidden="true"><span /><span /><span /></div> : <div className="related-list">{related.map(item => <button type="button" className="related-card" key={item.id} onClick={() => openDetail(item)} aria-label={`${t.openArticle}: ${item.title}`}>
-          {item.image_url ? <img src={item.image_url} alt="" loading="lazy" /> : <span className="related-placeholder" aria-hidden="true">SIGNAL</span>}
+          {item.image_url ? <span className="news-media related-image"><img src={item.image_url} alt="" loading="lazy" /></span> : <span className="related-placeholder" aria-hidden="true">SIGNAL</span>}
           <span className="related-copy"><span className="eyebrow">{item.source}<span aria-hidden="true"> · </span>{ago(item.published_at, locale)}</span><strong>{item.title}</strong><ArticleCategories article={item} locale={locale} /></span>
         </button>)}</div>}
       </section>}
