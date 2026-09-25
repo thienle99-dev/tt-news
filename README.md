@@ -19,7 +19,7 @@ MVP đọc RSS, lưu SQLite và hiển thị bằng Telegram Mini App. Một Go 
 1. Tạo file cấu hình: `cp .env.example .env`.
 2. Điền `MINI_APP_URL` (URL HTTPS Cloudflare Tunnel) và `TELEGRAM_BOT_TOKEN` khi đã có bot.
 3. Chạy: `make restart` (tương đương `docker compose up -d --build --force-recreate`).
-4. Kiểm tra: `curl http://localhost:8080/health` và `docker compose logs -f`.
+4. Kiểm tra: `curl http://localhost:1999/health` và `docker compose logs -f`.
 
 SQLite được bind mount trực tiếp tại `./data/news.db` trong project (tương ứng `/data/news.db` trong container). Bạn có thể mở file này bằng SQLite client trên máy host.
 
@@ -38,23 +38,19 @@ Telegram yêu cầu HTTPS cho Mini App production. Browser ở `localhost` khôn
 
 ### Dùng Cloudflare Tunnel
 
-Sau khi container đang chạy ở cổng 8080, mở một terminal khác và chạy Quick Tunnel:
+Sau khi container đang chạy, mở một terminal khác và chạy Quick Tunnel trỏ tới cổng host 1999:
 
 ```bash
 cloudflared tunnel --url http://localhost:1999
 ```
-```bash
-nohup cloudflared tunnel --url http://localhost:8080 > ~/cloudflared.log 2>&1 &
-  echo $!
-```
 
-Lệnh in ra một URL dạng `https://news-abc.trycloudflare.com`. Gán URL đó vào `MINI_APP_URL` trong `.env`, sau đó restart app để bot dùng URL mới:
+Giữ lệnh này chạy trong terminal khi dùng app. Lệnh in ra một URL dạng `https://news-abc.trycloudflare.com`; kiểm tra URL đó trả về trang app. Gán URL hiện tại vào `MINI_APP_URL` trong `.env`, sau đó recreate app để bot dùng URL mới:
 
 ```bash
 docker compose up -d --force-recreate
 ```
 
-Đặt cùng URL trong BotFather cho Menu Button/Mini App. Quick Tunnel đổi URL sau mỗi lần khởi động; khi dùng lâu dài, hãy tạo named tunnel trong Cloudflare Zero Trust với hostname cố định, rồi đặt hostname đó vào `MINI_APP_URL`.
+Đặt cùng URL trong BotFather cho Menu Button/Mini App. Nếu `cloudflared` dừng hoặc khởi động lại, Quick Tunnel có thể cấp URL mới; cập nhật URL đó trong `.env` và BotFather. Khi dùng lâu dài, hãy tạo named tunnel trong Cloudflare Zero Trust với hostname cố định, rồi đặt hostname đó vào `MINI_APP_URL`.
 
 ## Chạy local
 

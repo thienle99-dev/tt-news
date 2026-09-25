@@ -2,8 +2,10 @@ services:
   news-app:
     build: .
     env_file: .env
+    environment:
+      PORT: "8080"
     ports:
-      - "${PORT:-1999}:1999"
+      - "${PORT:-1999}:8080"
     volumes:
       - ./data:/data
     restart: unless-stopped
